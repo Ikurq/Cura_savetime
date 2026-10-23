@@ -197,12 +197,7 @@ class UsageMonitorService : Service() {
     }
 
     private fun getAppName(packageName: String): String {
-        return try {
-            val appInfo = packageManagerHelper.getApplicationInfo(packageName, 0)
-            packageManagerHelper.getApplicationLabel(appInfo).toString()
-        } catch (e: Exception) {
-            packageName.substringAfterLast('.')
-        }
+        return jp.cura.savetime.util.AppNameResolver.resolveAppName(this, packageName)
     }
 
     private fun updateMonitorNotification() {
