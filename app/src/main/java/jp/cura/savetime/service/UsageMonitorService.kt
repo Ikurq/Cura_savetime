@@ -29,6 +29,7 @@ import kotlinx.coroutines.launch
 
 /**
  * フォアグラウンドアプリの連続使用時間を常駐監視するサービス
+ * ユーザー補助サービス（即時検知）と UsageStatsManager（フォールバック）のハイブリッド構成
  */
 class UsageMonitorService : Service() {
 
@@ -38,25 +39,48 @@ class UsageMonitorService : Service() {
         const val NOTIFICATION_ID_MONITOR = 1001
         const val ACTION_STATE_CHANGED = "jp.cura.savetime.ACTION_STATE_CHANGED"
 
+        // 動的に追加される無視対象パッケージ（ランチャー等）
+        val dynamicIgnoredPackages = mutableSetOf(
+            "com.android.launcher",
+            "com.android.launcher3",
+            "com.google.android.apps.nexuslauncher",
+            "com.sec.android.app.launcher",
+            "com.miui.home",
+            "com.oppo.launcher",
+            "com.sonymobile.home",
+            "com.sonyericsson.home",
+            "com.android.systemui",
+            "jp.cura.savetime"
+        )
+
         // UIから参照可能なシングルトントラッカー
         val tracker = UsageSessionTracker(
             bufferDurationMs = 60_000L,
             thresholdMinutes = listOf(30L, 45L, 60L),
-            ignoredPackages = setOf(
-                "com.android.launcher",
-                "com.google.android.apps.nexuslauncher",
-                "com.android.systemui",
-                "jp.cura.savetime"
-            )
+            ignoredPackages = dynamicIgnoredPackages
         )
 
         var isRunning = false
             private set
+
+        @Volatile
+        private var lastAccessibilityEventTime: Long = 0L
+
+        /**
+         * AppDetectorAccessibilityService からの即座のフォアグラウンド切り替え通知
+         */
+        fun notifyAppForeground(packageName: String, appName: String, timestampMs: Long, isLauncher: Boolean) {
+            lastAccessibilityEventTime = timestampMs
+            if (isLauncher) {
+                dynamicIgnoredPackages.add(packageName)
+            }
+            tracker.onAppForeground(packageName, appName, timestampMs)
+        }
     }
 
     private val serviceJob = Job()
     private val serviceScope = CoroutineScope(Dispatchers.Default + serviceJob)
-    private lateinit var usageStatsManager: UsageStatsManager
+    private var usageStatsManager: UsageStatsManager? = null
     private lateinit var notificationManager: NotificationManager
     private lateinit var packageManagerHelper: PackageManager
     private lateinit var overlayManager: CuraOverlayManager
@@ -73,10 +97,11 @@ class UsageMonitorService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         packageManagerHelper = packageManager
 
+        detectAndRegisterDefaultLauncher()
         createNotificationChannels()
         overlayManager = CuraOverlayManager(this)
 
@@ -100,7 +125,12 @@ class UsageMonitorService : Service() {
 
             while (isActive) {
                 val now = System.currentTimeMillis()
-                pollUsageEvents(lastQueryTime, now)
+
+                // アクセシビリティイベントが直近10秒以内に来ていない場合のみ UsageStatsManager でポーリング補完
+                val timeSinceAccessibility = now - lastAccessibilityEventTime
+                if (timeSinceAccessibility > 10_000L) {
+                    pollUsageEvents(lastQueryTime, now)
+                }
                 lastQueryTime = now
 
                 val alert = tracker.onTick(now)
@@ -118,16 +148,30 @@ class UsageMonitorService : Service() {
                     session?.isBufferActive ?: false
                 )
 
-                delay(3000L) // 3秒間隔でポーリング
+                delay(1000L) // 1秒間隔でUI/オーバーレイ更新
             }
         }
 
         return START_STICKY
     }
 
+    private fun detectAndRegisterDefaultLauncher() {
+        try {
+            val intent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+            }
+            val resolveInfo = packageManagerHelper.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
+            val launcherPkg = resolveInfo?.activityInfo?.packageName
+            if (!launcherPkg.isNullOrBlank()) {
+                dynamicIgnoredPackages.add(launcherPkg)
+            }
+        } catch (_: Exception) {}
+    }
+
     @Suppress("DEPRECATION")
     private fun pollUsageEvents(startTime: Long, endTime: Long) {
-        val events = usageStatsManager.queryEvents(startTime, endTime) ?: return
+        val manager = usageStatsManager ?: return
+        val events = manager.queryEvents(startTime, endTime) ?: return
         val event = UsageEvents.Event()
 
         while (events.hasNextEvent()) {

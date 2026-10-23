@@ -116,6 +116,45 @@
             android:textSize="12sp" />
     </LinearLayout>
 
+    <!-- Accessibility Permission Banner -->
+    <LinearLayout
+        android:id="@+id/layoutAccessibilityBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:background="@drawable/bg_tactical_card"
+        android:orientation="vertical"
+        android:padding="14dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:text="@string/accessibility_required_title"
+            android:textColor="@color/accent_amber"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/accessibility_required_desc"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btnGrantAccessibility"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginTop="8dp"
+            android:backgroundTint="@color/accent_amber"
+            android:text="@string/grant_accessibility"
+            android:textColor="@color/bg_void"
+            android:textSize="12sp" />
+    </LinearLayout>
+
     <!-- Active App Continuous Usage Card -->
     <LinearLayout
         android:layout_width="match_parent"

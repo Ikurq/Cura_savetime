@@ -75,6 +75,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        binding.btnGrantAccessibility.setOnClickListener {
+            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            startActivity(intent)
+        }
+
         binding.switchMonitorDaemon.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
                 if (!hasUsageStatsPermission()) {
@@ -99,6 +104,9 @@ class MainActivity : AppCompatActivity() {
             true
         }
         binding.layoutOverlayPermissionBanner.visibility = if (hasOverlay) View.GONE else View.VISIBLE
+
+        val hasAccessibility = jp.cura.savetime.service.AppDetectorAccessibilityService.isAccessibilitySettingsOn(this)
+        binding.layoutAccessibilityBanner.visibility = if (hasAccessibility) View.GONE else View.VISIBLE
     }
 
     private fun hasUsageStatsPermission(): Boolean {
