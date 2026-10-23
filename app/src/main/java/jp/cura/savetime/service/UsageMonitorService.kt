@@ -111,6 +111,7 @@ class UsageMonitorService : Service() {
         return START_STICKY
     }
 
+    @Suppress("DEPRECATION")
     private fun pollUsageEvents(startTime: Long, endTime: Long) {
         val events = usageStatsManager.queryEvents(startTime, endTime) ?: return
         val event = UsageEvents.Event()
