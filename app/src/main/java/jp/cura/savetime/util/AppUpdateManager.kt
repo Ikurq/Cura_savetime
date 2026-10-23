@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.appcompat.app.AlertDialog
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -20,11 +21,15 @@ import java.net.URL
  */
 object AppUpdateManager {
 
-    private const val GITHUB_API_LATEST_RELEASE = "https://api.github.com/repos/Ikurq/Cura_savetime/releases/latest"
+    private const val GITHUB_REPO = "Ikurq/Cura_savetime"
+    private const val GITHUB_API_LATEST_RELEASE = "https://api.github.com/repos/$GITHUB_REPO/releases/latest"
+    const val RELEASES_WEB_URL = "https://github.com/$GITHUB_REPO/releases/latest"
+    private const val FALLBACK_DOWNLOAD_URL = "https://github.com/$GITHUB_REPO/releases/latest/download/app-debug.apk"
 
     data class UpdateInfo(
         val tagName: String,
         val downloadUrl: String,
+        val htmlUrl: String,
         val releaseNotes: String
     )
 
@@ -32,31 +37,33 @@ object AppUpdateManager {
         try {
             val url = URL(GITHUB_API_LATEST_RELEASE)
             val conn = url.openConnection() as HttpURLConnection
-            conn.setRequestProperty("User-Agent", "CuraSaveTime-App")
-            conn.connectTimeout = 8000
-            conn.readTimeout = 8000
+            conn.setRequestProperty("User-Agent", "CuraSaveTime-Android-App")
+            conn.setRequestProperty("Accept", "application/vnd.github+json")
+            conn.connectTimeout = 10000
+            conn.readTimeout = 10000
 
             if (conn.responseCode == 200) {
                 val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
                 val root = JSONObject(jsonStr)
                 val tagName = root.optString("tag_name", "")
-                val body = root.optString("body", "")
+                val body = root.optString("body", "").trim()
+                val htmlUrl = root.optString("html_url", RELEASES_WEB_URL)
 
                 val assets = root.optJSONArray("assets")
-                var downloadUrl = ""
+                var downloadUrl = FALLBACK_DOWNLOAD_URL
                 if (assets != null) {
                     for (i in 0 until assets.length()) {
                         val asset = assets.getJSONObject(i)
                         val name = asset.optString("name", "")
-                        if (name.endsWith(".apk")) {
-                            downloadUrl = asset.optString("browser_download_url", "")
+                        if (name.endsWith(".apk", ignoreCase = true)) {
+                            downloadUrl = asset.optString("browser_download_url", downloadUrl)
                             break
                         }
                     }
                 }
 
-                if (downloadUrl.isNotBlank()) {
-                    return@withContext UpdateInfo(tagName, downloadUrl, body)
+                if (tagName.isNotBlank()) {
+                    return@withContext UpdateInfo(tagName, downloadUrl, htmlUrl, body)
                 }
             }
         } catch (_: Exception) {}
@@ -65,14 +72,33 @@ object AppUpdateManager {
 
     suspend fun downloadApk(context: Context, downloadUrl: String): File? = withContext(Dispatchers.IO) {
         try {
-            val url = URL(downloadUrl)
-            val conn = url.openConnection() as HttpURLConnection
-            conn.setRequestProperty("User-Agent", "CuraSaveTime-App")
-            conn.connectTimeout = 10000
-            conn.readTimeout = 30000
+            var currentUrl = downloadUrl
+            var redirects = 0
+            var conn: HttpURLConnection
+
+            while (true) {
+                val url = URL(currentUrl)
+                conn = url.openConnection() as HttpURLConnection
+                conn.instanceFollowRedirects = false
+                conn.setRequestProperty("User-Agent", "CuraSaveTime-Android-App")
+                conn.connectTimeout = 15000
+                conn.readTimeout = 45000
+
+                val status = conn.responseCode
+                if (status in 301..308) {
+                    val location = conn.getHeaderField("Location") ?: break
+                    currentUrl = location
+                    redirects++
+                    if (redirects > 5) break
+                } else {
+                    break
+                }
+            }
+
+            if (conn.responseCode != 200) return@withContext null
 
             val cacheDir = context.cacheDir
-            val destFile = File(cacheDir, "update.apk")
+            val destFile = File(cacheDir, "CuraSaveTime-update.apk")
             if (destFile.exists()) {
                 destFile.delete()
             }
@@ -82,7 +108,11 @@ object AppUpdateManager {
                     input.copyTo(output)
                 }
             }
-            return@withContext destFile
+
+            if (destFile.exists() && destFile.length() > 100_000L) {
+                return@withContext destFile
+            }
+            return@withContext null
         } catch (_: Exception) {
             return@withContext null
         }
@@ -114,5 +144,25 @@ object AppUpdateManager {
         }
 
         activity.startActivity(intent)
+    }
+
+    fun showFallbackBrowserDialog(context: Context, downloadUrl: String = FALLBACK_DOWNLOAD_URL) {
+        AlertDialog.Builder(context)
+            .setTitle("アップデート")
+            .setMessage("ブラウザ経由で最新APKをダウンロードしますか？")
+            .setPositiveButton("APKを直接ダウンロード") { _, _ ->
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl)).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(intent)
+            }
+            .setNeutralButton("GitHub Releasesを開く") { _, _ ->
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(RELEASES_WEB_URL)).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(intent)
+            }
+            .setNegativeButton("キャンセル", null)
+            .show()
     }
 }

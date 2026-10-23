@@ -169,34 +169,52 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             val update = AppUpdateManager.checkLatestRelease()
+            val currentVersion = try {
+                packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0.0"
+            } catch (_: Exception) { "1.0.0" }
+
+            binding.btnCheckUpdate.text = "更新確認"
+            binding.btnCheckUpdate.isEnabled = true
+
             if (update != null) {
-                val currentVersion = try {
-                    packageManager.getPackageInfo(packageName, 0).versionName
-                } catch (_: Exception) { "1.0.0" }
+                val isNewer = update.tagName != "v$currentVersion" && update.tagName != currentVersion
+                val notes = if (update.releaseNotes.isNotBlank()) "\n\n【更新内容】\n${update.releaseNotes.take(300)}" else ""
+                val statusMsg = if (isNewer) "新しいバージョンが利用可能です！" else "現在最新バージョンを使用中です。"
 
-                if (update.tagName != "v$currentVersion" && update.tagName != currentVersion) {
-                    binding.btnCheckUpdate.text = "DL中..."
-                    Toast.makeText(this@MainActivity, "新バージョン ${update.tagName} をダウンロード中...", Toast.LENGTH_SHORT).show()
-
-                    val apkFile = AppUpdateManager.downloadApk(this@MainActivity, update.downloadUrl)
-                    if (apkFile != null) {
-                        binding.btnCheckUpdate.text = "更新実行"
-                        binding.btnCheckUpdate.isEnabled = true
-                        AppUpdateManager.promptInstall(this@MainActivity, apkFile)
-                    } else {
-                        Toast.makeText(this@MainActivity, "ダウンロードに失敗しました", Toast.LENGTH_SHORT).show()
-                        binding.btnCheckUpdate.text = "更新確認"
-                        binding.btnCheckUpdate.isEnabled = true
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("アップデート確認 (${update.tagName})")
+                    .setMessage("$statusMsg\n現在: v$currentVersion / 最新: ${update.tagName}$notes")
+                    .setPositiveButton("アプリ内で自動更新") { _, _ ->
+                        downloadAndInstallUpdate(update.downloadUrl, update.tagName)
                     }
-                } else {
-                    Toast.makeText(this@MainActivity, "最新バージョン（v$currentVersion）です", Toast.LENGTH_SHORT).show()
-                    binding.btnCheckUpdate.text = "最新版"
-                    binding.btnCheckUpdate.isEnabled = true
-                }
+                    .setNeutralButton("ブラウザでDL") { _, _ ->
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(update.downloadUrl))
+                        startActivity(intent)
+                    }
+                    .setNegativeButton("閉じる", null)
+                    .show()
             } else {
-                Toast.makeText(this@MainActivity, "更新情報の取得に失敗しました", Toast.LENGTH_SHORT).show()
-                binding.btnCheckUpdate.text = "更新確認"
-                binding.btnCheckUpdate.isEnabled = true
+                AppUpdateManager.showFallbackBrowserDialog(this@MainActivity)
+            }
+        }
+    }
+
+    private fun downloadAndInstallUpdate(downloadUrl: String, tagName: String) {
+        binding.btnCheckUpdate.isEnabled = false
+        binding.btnCheckUpdate.text = "DL中..."
+        Toast.makeText(this, "$tagName をダウンロードしています...", Toast.LENGTH_SHORT).show()
+
+        lifecycleScope.launch {
+            val apkFile = AppUpdateManager.downloadApk(this@MainActivity, downloadUrl)
+            binding.btnCheckUpdate.text = "更新確認"
+            binding.btnCheckUpdate.isEnabled = true
+
+            if (apkFile != null) {
+                AppUpdateManager.promptInstall(this@MainActivity, apkFile)
+            } else {
+                Toast.makeText(this@MainActivity, "直接DLに失敗したためブラウザを開きます", Toast.LENGTH_SHORT).show()
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl))
+                startActivity(intent)
             }
         }
     }
