@@ -26,7 +26,7 @@ class UsageSessionTracker(
     private var screenOffStartedAtMs: Long = 0L
 
     // 1時間ごとのリセット用トラッキング（エポックミリ秒を 3600_000 で割った時間インデックス）
-    private var currentHourBucket: Long = System.currentTimeMillis() / (60 * 60 * 1000L)
+    private var currentHourBucket: Long = -1L
 
     // このスマホ操作セッション内で使用したアプリごとの累積セッション (パッケージ名 -> セッション)
     private val activeSessions = mutableMapOf<String, AppSession>()
@@ -196,7 +196,11 @@ class UsageSessionTracker(
      */
     private fun checkHourlyReset(timestampMs: Long) {
         val bucket = timestampMs / (60 * 60 * 1000L)
-        if (bucket > currentHourBucket) {
+        if (currentHourBucket == -1L) {
+            currentHourBucket = bucket
+            return
+        }
+        if (bucket != currentHourBucket) {
             currentHourBucket = bucket
             resetAllSessions(timestampMs)
             screenSessionStartedAtMs = timestampMs
