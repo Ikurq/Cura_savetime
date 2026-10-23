@@ -40,6 +40,7 @@ class CuraOverlayManager(private val context: Context) {
     private var tvBalloonRuleTag: TextView? = null
     private var tvBalloonAlertWarning: TextView? = null
     private var layoutSideHandle: FrameLayout? = null
+    private var ivCuraPeeking: ImageView? = null
 
     private var isBalloonVisible = false
     private val autoHideRunnable = Runnable { hideBalloon() }
@@ -67,6 +68,7 @@ class CuraOverlayManager(private val context: Context) {
         tvBalloonRuleTag = view.findViewById(R.id.tvBalloonRuleTag)
         tvBalloonAlertWarning = view.findViewById(R.id.tvBalloonAlertWarning)
         layoutSideHandle = view.findViewById(R.id.layoutSideHandle)
+        ivCuraPeeking = view.findViewById(R.id.ivCuraPeeking)
 
         val layoutParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -103,6 +105,7 @@ class CuraOverlayManager(private val context: Context) {
                     initialY = layoutParams.y
                     initialTouchY = event.rawY
                     isDragging = false
+                    ivCuraPeeking?.animate()?.scaleX(0.92f)?.scaleY(0.92f)?.setDuration(80)?.start()
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -114,8 +117,9 @@ class CuraOverlayManager(private val context: Context) {
                     }
                     true
                 }
-                MotionEvent.ACTION_UP -> {
-                    if (!isDragging) {
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    ivCuraPeeking?.animate()?.scaleX(1.0f)?.scaleY(1.0f)?.setDuration(120)?.start()
+                    if (!isDragging && event.action == MotionEvent.ACTION_UP) {
                         // タップ判定: 吹き出しの開閉トグル
                         toggleBalloon()
                     }

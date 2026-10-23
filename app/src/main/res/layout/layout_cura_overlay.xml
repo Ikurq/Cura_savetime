@@ -10,7 +10,7 @@
         android:id="@+id/layoutBalloon"
         android:layout_width="220dp"
         android:layout_height="wrap_content"
-        android:layout_marginEnd="6dp"
+        android:layout_marginEnd="4dp"
         android:background="@drawable/bg_tactical_balloon"
         android:orientation="vertical"
         android:visibility="gone">
@@ -84,22 +84,22 @@
             android:visibility="gone" />
     </LinearLayout>
 
-    <!-- Side Sense Peeking Cura Handle -->
+    <!-- DesktopMate Style: Peeking Chibi Cura on Right Screen Edge -->
     <FrameLayout
         android:id="@+id/layoutSideHandle"
-        android:layout_width="48dp"
-        android:layout_height="64dp"
-        android:background="@drawable/bg_side_handle"
-        android:padding="3dp">
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@android:color/transparent">
 
         <ImageView
             android:id="@+id/ivCuraPeeking"
-            android:layout_width="40dp"
-            android:layout_height="56dp"
-            android:layout_gravity="center"
+            android:layout_width="wrap_content"
+            android:layout_height="115dp"
+            android:layout_gravity="end|center_vertical"
+            android:adjustViewBounds="true"
             android:contentDescription="Cura"
-            android:scaleType="centerCrop"
-            android:src="@drawable/cura_icon_character" />
+            android:scaleType="fitEnd"
+            android:src="@drawable/cura_peeking_chibi" />
     </FrameLayout>
 
 </LinearLayout>
