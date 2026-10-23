@@ -130,8 +130,12 @@ class UsageMonitorService : Service() {
         }
 
         serviceScope.launch {
-            // 初回起動時は直近15分間の履歴をスキャンしてタイムラインや初期状態を即座に構築
-            var lastQueryTime = System.currentTimeMillis() - (15 * 60 * 1000L)
+            val initNow = System.currentTimeMillis()
+            // 初回起動時は当日00:00:00（86,400秒軸の先頭）からのイベント履歴をバックフィルしてグラフに反映
+            backfillDayTimelineFromUsageStats(initNow)
+
+            // 直近15分間の履歴から現在のアクティブセッション状態も復元
+            var lastQueryTime = initNow - (15 * 60 * 1000L)
 
             while (isActive) {
                 val now = System.currentTimeMillis()
@@ -178,6 +182,72 @@ class UsageMonitorService : Service() {
                 dynamicIgnoredPackages.add(launcherPkg)
             }
         } catch (_: Exception) {}
+    }
+
+    @Suppress("DEPRECATION")
+    private fun backfillDayTimelineFromUsageStats(nowMs: Long) {
+        val manager = usageStatsManager ?: return
+        val startOfDayMs = jp.cura.savetime.tracker.TimelineGraphCalculator.getStartOfDayMs(nowMs)
+        val events = manager.queryEvents(startOfDayMs, nowMs) ?: return
+        val event = UsageEvents.Event()
+
+        val historical = mutableListOf<jp.cura.savetime.model.TimelineEntry>()
+        var activePkg: String? = null
+        var activeAppName: String = ""
+        var activeStartMs: Long = 0L
+
+        fun closeCurrentSegment(endMs: Long) {
+            val pkg = activePkg ?: return
+            if (!dynamicIgnoredPackages.contains(pkg)) {
+                val durSec = ((endMs - activeStartMs) / 1000L).coerceIn(1L, 7200L)
+                historical.add(
+                    jp.cura.savetime.model.TimelineEntry(
+                        packageName = pkg,
+                        appName = activeAppName,
+                        timestampMs = activeStartMs,
+                        durationSeconds = durSec
+                    )
+                )
+            }
+            activePkg = null
+        }
+
+        while (events.hasNextEvent()) {
+            events.getNextEvent(event)
+            val pkg = event.packageName ?: continue
+            val time = event.timeStamp
+
+            if (pkg == packageName ||
+                pkg.contains("systemui", ignoreCase = true) ||
+                pkg.contains("inputmethod", ignoreCase = true) ||
+                pkg.contains("keyboard", ignoreCase = true)
+            ) {
+                continue
+            }
+
+            when (event.eventType) {
+                UsageEvents.Event.ACTIVITY_RESUMED,
+                UsageEvents.Event.MOVE_TO_FOREGROUND -> {
+                    if (dynamicIgnoredPackages.contains(pkg)) {
+                        closeCurrentSegment(time)
+                    } else if (activePkg != pkg) {
+                        closeCurrentSegment(time)
+                        activePkg = pkg
+                        activeAppName = getAppName(pkg)
+                        activeStartMs = time
+                    }
+                }
+                UsageEvents.Event.SCREEN_NON_INTERACTIVE -> {
+                    closeCurrentSegment(time)
+                }
+            }
+        }
+        if (activePkg != null) {
+            closeCurrentSegment(nowMs)
+        }
+        if (historical.isNotEmpty()) {
+            tracker.seedHistoricalTimeline(historical)
+        }
     }
 
     @Suppress("DEPRECATION")

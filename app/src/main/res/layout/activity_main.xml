@@ -286,7 +286,7 @@
                     android:layout_height="wrap_content" />
             </LinearLayout>
 
-            <!-- Timeline Card -->
+            <!-- Timeline Card (86,400-Second X-Axis / Seconds Y-Axis Graph + Switch History) -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -295,14 +295,112 @@
                 android:orientation="vertical"
                 android:padding="16dp">
 
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="6dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:fontFamily="monospace"
+                        android:text=":: TIMELINE // 86400s_GRAPH (縦:秒)"
+                        android:textColor="@color/accent_cyan"
+                        android:textSize="11sp"
+                        android:textStyle="bold" />
+
+                    <Button
+                        android:id="@+id/btnZoom24h"
+                        android:layout_width="wrap_content"
+                        android:layout_height="28dp"
+                        android:layout_marginEnd="4dp"
+                        android:backgroundTint="@color/bg_surface"
+                        android:minWidth="44dp"
+                        android:paddingHorizontal="6dp"
+                        android:paddingVertical="0dp"
+                        android:text="24H"
+                        android:textColor="@color/accent_cyan"
+                        android:textSize="9sp" />
+
+                    <Button
+                        android:id="@+id/btnZoom6h"
+                        android:layout_width="wrap_content"
+                        android:layout_height="28dp"
+                        android:layout_marginEnd="4dp"
+                        android:backgroundTint="@color/bg_surface"
+                        android:minWidth="40dp"
+                        android:paddingHorizontal="6dp"
+                        android:paddingVertical="0dp"
+                        android:text="6H"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="9sp" />
+
+                    <Button
+                        android:id="@+id/btnZoom1h"
+                        android:layout_width="wrap_content"
+                        android:layout_height="28dp"
+                        android:layout_marginEnd="4dp"
+                        android:backgroundTint="@color/bg_surface"
+                        android:minWidth="40dp"
+                        android:paddingHorizontal="6dp"
+                        android:paddingVertical="0dp"
+                        android:text="1H"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="9sp" />
+
+                    <Button
+                        android:id="@+id/btnZoom15m"
+                        android:layout_width="wrap_content"
+                        android:layout_height="28dp"
+                        android:backgroundTint="@color/bg_surface"
+                        android:minWidth="44dp"
+                        android:paddingHorizontal="6dp"
+                        android:paddingVertical="0dp"
+                        android:text="15M"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="9sp" />
+                </LinearLayout>
+
+                <!-- Inspector Readout (Tap/Scrub on 86,400s axis) -->
+                <TextView
+                    android:id="@+id/tvTimelineInspector"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="6dp"
+                    android:background="@color/bg_surface"
+                    android:fontFamily="monospace"
+                    android:paddingHorizontal="8dp"
+                    android:paddingVertical="6dp"
+                    android:text="グラフをタップ・なぞると指定秒のアプリと使用秒数を表示します"
+                    android:textColor="@color/accent_lime"
+                    android:textSize="11sp" />
+
+                <!-- 86,400-Second X-axis / Seconds Y-axis Graph -->
+                <jp.cura.savetime.ui.TimelineGraphView
+                    android:id="@+id/timelineGraphView"
+                    android:layout_width="match_parent"
+                    android:layout_height="190dp"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- App Color Legend -->
+                <LinearLayout
+                    android:id="@+id/layoutTimelineLegend"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="10dp"
+                    android:orientation="vertical" />
+
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="8dp"
+                    android:layout_marginBottom="6dp"
                     android:fontFamily="monospace"
-                    android:text=":: TIMELINE // RECENT_APP_SWITCHES"
-                    android:textColor="@color/accent_cyan"
-                    android:textSize="11sp"
+                    android:text=":: RECENT_SWITCH_LOG (直近の切り替え)"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="10sp"
                     android:textStyle="bold" />
 
                 <LinearLayout

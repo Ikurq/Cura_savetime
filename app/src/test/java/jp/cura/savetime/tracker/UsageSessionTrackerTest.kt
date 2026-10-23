@@ -100,4 +100,37 @@ class UsageSessionTrackerTest {
         tracker.onAppForeground("com.example.excluded", "除外アプリ", startMs)
         assertNull(tracker.getCurrentSession())
     }
+
+    @Test
+    fun testTimelineRetainsMoreThan50EntriesWithin24Hours() {
+        var now = 10_000_000L
+        for (i in 1..120) {
+            val pkg = if (i % 2 == 0) "com.google.android.youtube" else "com.twitter.android"
+            val name = if (i % 2 == 0) "YouTube" else "X"
+            tracker.onAppForeground(pkg, name, now)
+            now += 10_000L
+        }
+        assertEquals(120, tracker.getTimeline().size)
+    }
+
+    @Test
+    fun testTimelineCreatesNewEntryAfterLauncherPause() {
+        var now = 1_000_000L
+        // YouTube を 20秒見る
+        tracker.onAppForeground("com.google.android.youtube", "YouTube", now)
+        now += 20_000L
+        // ランチャー（ホーム画面）に 40秒戻る
+        tracker.onAppForeground("com.android.launcher", "Launcher", now)
+        now += 40_000L
+        // 再び YouTube を 15秒見る
+        tracker.onAppForeground("com.google.android.youtube", "YouTube", now)
+        now += 15_000L
+        tracker.onTick(now)
+
+        val timeline = tracker.getTimeline()
+        assertEquals(2, timeline.size)
+        // 最新エントリは 15秒、前回エントリは 20秒（ランチャー滞在の40秒が混入しないこと）
+        assertEquals(15L, timeline[0].durationSeconds)
+        assertEquals(20L, timeline[1].durationSeconds)
+    }
 }

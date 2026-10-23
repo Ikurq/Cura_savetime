@@ -33,9 +33,10 @@ class UsageSessionTracker(
     private val activeSessions = mutableMapOf<String, AppSession>()
     private var currentActivePackage: String? = null
 
-    // タイムライン履歴（直近50件）
+    // タイムライン履歴（当日24時間＝86,400秒分を保持）
     private val timelineEntries = mutableListOf<TimelineEntry>()
     private var lastAppSwitchedAtMs: Long = 0L
+    private var isTimelineTopEntryOpen: Boolean = false
 
     // 過去の確定レコード & アラートトリガー履歴
     private val records = mutableMapOf<String, ContinuousRecord>()
@@ -109,6 +110,23 @@ class UsageSessionTracker(
     }
 
     /**
+     * UsageStatsManager等から復元した当日の過去タイムライン履歴をシードする（重複除外・降順整列）
+     */
+    fun seedHistoricalTimeline(historicalEntries: List<TimelineEntry>) {
+        val existingTimestamps = timelineEntries.map { it.timestampMs }.toHashSet()
+        for (entry in historicalEntries) {
+            if (!ignoredPackages.contains(entry.packageName) && !existingTimestamps.contains(entry.timestampMs)) {
+                timelineEntries.add(entry)
+                existingTimestamps.add(entry.timestampMs)
+            }
+        }
+        timelineEntries.sortByDescending { it.timestampMs }
+        if (timelineEntries.size > 5000) {
+            timelineEntries.subList(5000, timelineEntries.size).clear()
+        }
+    }
+
+    /**
      * 特定のパッケージを除外した際に、既存のセッション・タイムラインからも削除する
      */
     fun removePackageData(packageName: String) {
@@ -117,6 +135,7 @@ class UsageSessionTracker(
         timelineEntries.removeAll { it.packageName == packageName }
         if (currentActivePackage == packageName) {
             currentActivePackage = null
+            isTimelineTopEntryOpen = false
         }
     }
 
@@ -159,10 +178,11 @@ class UsageSessionTracker(
             }
         }
 
-        // 同一アプリのウィンドウ内遷移でない場合のみ新規タイムラインエントリを追加
-        if (previousPkg != packageName) {
+        // 別アプリからの遷移、またはランチャー/消灯による中断からの復帰時は新規タイムラインエントリを追加
+        if (previousPkg != packageName || !isTimelineTopEntryOpen) {
             currentActivePackage = packageName
             lastAppSwitchedAtMs = timestampMs
+            isTimelineTopEntryOpen = true
 
             val newEntry = TimelineEntry(
                 packageName = packageName,
@@ -171,7 +191,10 @@ class UsageSessionTracker(
                 durationSeconds = 1L
             )
             timelineEntries.add(0, newEntry)
-            if (timelineEntries.size > 50) {
+            // 24時間（86,400秒）を超える古い履歴・上限超過分のみクリーンアップ
+            val cutoffMs = timestampMs - 86_400_000L * 2
+            timelineEntries.removeAll { it.timestampMs < cutoffMs }
+            if (timelineEntries.size > 5000) {
                 timelineEntries.removeAt(timelineEntries.lastIndex)
             }
         }
@@ -262,8 +285,8 @@ class UsageSessionTracker(
                 session.continuousDurationMs += 1000L
                 session.lastActiveAtMs = timestampMs
 
-                // タイムライン先頭が現在アクティブなアプリなら滞在秒数をリアルタイム更新
-                if (timelineEntries.isNotEmpty() && timelineEntries[0].packageName == currentPkg) {
+                // タイムライン先頭が現在オープンかつアクティブなアプリなら滞在秒数をリアルタイム更新
+                if (isTimelineTopEntryOpen && timelineEntries.isNotEmpty() && timelineEntries[0].packageName == currentPkg) {
                     val elapsedSec = ((timestampMs - timelineEntries[0].timestampMs) / 1000L).coerceAtLeast(1L)
                     timelineEntries[0] = timelineEntries[0].copy(durationSeconds = elapsedSec)
                 }
@@ -290,11 +313,13 @@ class UsageSessionTracker(
     }
 
     private fun finalizeTopTimelineEntry(timestampMs: Long) {
+        if (!isTimelineTopEntryOpen) return
         val currentPkg = currentActivePackage ?: return
         if (timelineEntries.isNotEmpty() && timelineEntries[0].packageName == currentPkg) {
             val elapsedSec = ((timestampMs - timelineEntries[0].timestampMs) / 1000L).coerceAtLeast(1L)
             timelineEntries[0] = timelineEntries[0].copy(durationSeconds = elapsedSec)
         }
+        isTimelineTopEntryOpen = false
     }
 
     private fun checkThresholdAlert(timestampMs: Long): ThresholdAlert? {
@@ -354,11 +379,13 @@ class UsageSessionTracker(
     }
 
     private fun resetAllSessions(timestampMs: Long) {
+        finalizeTopTimelineEntry(timestampMs)
         for (session in activeSessions.values) {
             commitSessionToRecord(session)
         }
         activeSessions.clear()
         currentActivePackage = null
+        isTimelineTopEntryOpen = false
         screenSessionStartedAtMs = 0L
         triggeredThresholds.clear()
         triggeredScreenThresholds.clear()

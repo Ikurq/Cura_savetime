@@ -127,6 +127,51 @@ class MainActivity : AppCompatActivity() {
         binding.btnCheckUpdate.setOnClickListener {
             checkForAppUpdate()
         }
+
+        binding.btnZoom24h.setOnClickListener {
+            applyTimelineZoom(86_400)
+        }
+        binding.btnZoom6h.setOnClickListener {
+            applyTimelineZoom(21_600)
+        }
+        binding.btnZoom1h.setOnClickListener {
+            applyTimelineZoom(3_600)
+        }
+        binding.btnZoom15m.setOnClickListener {
+            applyTimelineZoom(900)
+        }
+
+        binding.timelineGraphView.onInspectionChanged = { bar, inspectedSec ->
+            updateInspectorText(bar, inspectedSec)
+        }
+    }
+
+    private fun applyTimelineZoom(spanSeconds: Int) {
+        binding.timelineGraphView.setZoomWindowSeconds(spanSeconds)
+        val activeColor = ContextCompat.getColor(this, R.color.accent_cyan)
+        val inactiveColor = ContextCompat.getColor(this, R.color.text_secondary)
+        binding.btnZoom24h.setTextColor(if (spanSeconds == 86_400) activeColor else inactiveColor)
+        binding.btnZoom6h.setTextColor(if (spanSeconds == 21_600) activeColor else inactiveColor)
+        binding.btnZoom1h.setTextColor(if (spanSeconds == 3_600) activeColor else inactiveColor)
+        binding.btnZoom15m.setTextColor(if (spanSeconds == 900) activeColor else inactiveColor)
+    }
+
+    private fun updateInspectorText(
+        bar: jp.cura.savetime.tracker.TimelineBar?,
+        inspectedSec: Int
+    ) {
+        if (bar != null) {
+            val startStr = jp.cura.savetime.tracker.TimelineGraphCalculator.formatSecondOfDay(bar.startSecondOfDay)
+            val endStr = jp.cura.savetime.tracker.TimelineGraphCalculator.formatSecondOfDay(bar.endSecondOfDay)
+            binding.tvTimelineInspector.text =
+                "[$startStr-$endStr (${bar.startSecondOfDay}/86400s)] ${bar.appName} : ${bar.durationSeconds}秒"
+            binding.tvTimelineInspector.setTextColor(ContextCompat.getColor(this, R.color.accent_lime))
+        } else {
+            val timeStr = jp.cura.savetime.tracker.TimelineGraphCalculator.formatSecondOfDay(inspectedSec)
+            binding.tvTimelineInspector.text =
+                "[$timeStr ($inspectedSec/86400s)] 使用記録なし (0秒)"
+            binding.tvTimelineInspector.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
+        }
     }
 
     private fun excludePackage(pkg: String, appName: String) {
@@ -323,9 +368,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderTimelineList() {
         binding.layoutTimelineList.removeAllViews()
+        binding.layoutTimelineLegend.removeAllViews()
         val timeline = UsageMonitorService.tracker.getTimeline()
 
+        binding.timelineGraphView.setTimelineData(timeline)
+
         if (timeline.isEmpty()) {
+            binding.tvTimelineInspector.text = "グラフ待機中（横軸: 0〜86400秒 / 縦軸: 秒）"
+            binding.tvTimelineInspector.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
             val emptyTv = TextView(this).apply {
                 text = "まだアプリ切り替え履歴がありません（別アプリを開くと即座に記録されます）"
                 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
@@ -336,6 +386,32 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        updateInspectorText(
+            binding.timelineGraphView.getSelectedBar(),
+            binding.timelineGraphView.getInspectedSecond()
+        )
+
+        // アプリ別カラー凡例と当日累計秒数（上位6件を2列または横並びで表示）
+        val summaries = binding.timelineGraphView.getAppSummaries().take(6)
+        val palette = jp.cura.savetime.ui.TimelineGraphView.APP_COLOR_PALETTE
+        summaries.chunked(2).forEach { pair ->
+            val legendRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, 2, 0, 2)
+            }
+            for (summary in pair) {
+                val itemTv = TextView(this).apply {
+                    text = "■ ${summary.appName} (${summary.totalSeconds}s)"
+                    setTextColor(palette[summary.colorIndex])
+                    textSize = 10.5f
+                    typeface = android.graphics.Typeface.MONOSPACE
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
+                legendRow.addView(itemTv)
+            }
+            binding.layoutTimelineLegend.addView(legendRow)
+        }
+
         val timeFormatter = SimpleDateFormat("HH:mm:ss", Locale.JAPAN)
         timeline.take(20).forEach { entry ->
             val row = LinearLayout(this).apply {
@@ -344,9 +420,14 @@ class MainActivity : AppCompatActivity() {
                 setPadding(0, 6, 0, 6)
             }
 
+            val colorIdx = jp.cura.savetime.tracker.TimelineGraphCalculator.colorIndexForPackage(
+                entry.packageName,
+                palette.size
+            )
+
             val timeTv = TextView(this).apply {
                 text = timeFormatter.format(Date(entry.timestampMs))
-                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent_cyan))
+                setTextColor(palette[colorIdx])
                 textSize = 11f
                 typeface = android.graphics.Typeface.MONOSPACE
                 layoutParams = LinearLayout.LayoutParams(150, LinearLayout.LayoutParams.WRAP_CONTENT)
@@ -362,9 +443,9 @@ class MainActivity : AppCompatActivity() {
             val durationTv = TextView(this).apply {
                 val mins = entry.durationSeconds / 60
                 val secs = entry.durationSeconds % 60
-                text = if (mins > 0) "${mins}分${secs}秒" else "${secs}秒"
+                text = if (mins > 0) "${entry.durationSeconds}秒 (${mins}m${secs}s)" else "${entry.durationSeconds}秒"
                 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent_lime))
-                textSize = 12f
+                textSize = 11f
                 typeface = android.graphics.Typeface.MONOSPACE
                 setPadding(8, 0, 12, 0)
             }
