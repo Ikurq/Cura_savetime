@@ -17,6 +17,17 @@ data class AppSession(
 )
 
 /**
+ * タイムライン用のセッション履歴モデル
+ */
+@Serializable
+data class TimelineEntry(
+    val packageName: String,
+    val appName: String,
+    val timestampMs: Long,
+    val durationSeconds: Long
+)
+
+/**
  * アプリごとの集計記録（最大連続使用時間など）
  */
 @Serializable

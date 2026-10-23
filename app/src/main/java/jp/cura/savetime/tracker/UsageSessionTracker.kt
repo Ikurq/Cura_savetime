@@ -3,42 +3,43 @@ package jp.cura.savetime.tracker
 import jp.cura.savetime.model.AppSession
 import jp.cura.savetime.model.ContinuousRecord
 import jp.cura.savetime.model.ThresholdAlert
+import jp.cura.savetime.model.TimelineEntry
 
 /**
  * アプリの利用時間および「端末全体の連続スクリーンタイム」を追跡するトラッカー
  *
- * 【ザッピング対応・累積連続設計】:
- * ユーザーがスマホを操作している一連のセッション（画面消灯による十分な休憩をとるまで）の間、
- * アプリA -> アプリB -> アプリC と高速に行き来しても、
- * 各アプリの「累計連続使用時間」は絶対にリセットされずに加算（累積）され続けます。
- *
- * 例:
- * - YouTube 30秒
- * - X 30秒
- * - ブラウザ 30秒
- * - YouTube 30秒戻る -> YouTubeはリセットされず「1分00秒」に累積！
- * - X 30秒戻る -> Xも「1分00秒」に累積！
- *
- * セッション全体がリセットされるのは、ユーザーが「画面を消灯して休憩（screenRestBufferMs = 60秒）」した時のみです。
+ * 特徴:
+ * 1. 【1時間ごとの定時リセット】: 毎正時（例: 14:00, 15:00...）に累計セッションを自動確定・リセット。
+ * 2. 【タイムライン履歴】: 直近のアプリ利用遷移と滞在秒数を保持（最大50件）。
+ * 3. 【除外パッケージの動的判定】: 設定された除外アプリを無視。
+ * 4. 【ザッピング累積】: スマホ操作中のアプリ行き来をすべて累積。
  */
 class UsageSessionTracker(
     val bufferDurationMs: Long = 60_000L,
-    val screenRestBufferMs: Long = 60_000L, // 画面消灯で一息入れた（休憩）とみなす時間
+    val screenRestBufferMs: Long = 60_000L, // 画面消灯で休憩とみなす時間 (60秒)
     val thresholdMinutes: List<Long> = listOf(30L, 45L, 60L),
-    val ignoredPackages: Set<String> = emptySet()
+    var ignoredPackages: Set<String> = emptySet()
 ) {
     // 端末全体の連続スクリーンセッション
     private var screenSessionStartedAtMs: Long = 0L
     private var isScreenOff: Boolean = false
     private var screenOffStartedAtMs: Long = 0L
 
+    // 1時間ごとのリセット用トラッキング（エポックミリ秒を 3600_000 で割った時間インデックス）
+    private var currentHourBucket: Long = System.currentTimeMillis() / (60 * 60 * 1000L)
+
     // このスマホ操作セッション内で使用したアプリごとの累積セッション (パッケージ名 -> セッション)
     private val activeSessions = mutableMapOf<String, AppSession>()
     private var currentActivePackage: String? = null
 
+    // タイムライン履歴（直近50件）
+    private val timelineEntries = mutableListOf<TimelineEntry>()
+    private var lastAppSwitchedAtMs: Long = 0L
+    private var lastActiveAppInfo: Pair<String, String>? = null // (packageName, appName)
+
     // 過去の確定レコード & アラートトリガー履歴
     private val records = mutableMapOf<String, ContinuousRecord>()
-    private val triggeredThresholds = mutableMapOf<String, MutableSet<Long>>() // パッケージごとのトリガー済み
+    private val triggeredThresholds = mutableMapOf<String, MutableSet<Long>>()
     private val triggeredScreenThresholds = mutableSetOf<Long>()
 
     fun getCurrentSession(): AppSession? {
@@ -46,9 +47,6 @@ class UsageSessionTracker(
         return activeSessions[currentPkg]
     }
 
-    /**
-     * 端末全体の連続使用時間（ミリ秒）を取得
-     */
     fun getTotalContinuousScreenDurationMs(now: Long = System.currentTimeMillis()): Long {
         if (screenSessionStartedAtMs == 0L) return 0L
         if (isScreenOff && (now - screenOffStartedAtMs > screenRestBufferMs)) {
@@ -61,10 +59,16 @@ class UsageSessionTracker(
         return records.values.sortedByDescending { it.maxContinuousMinutes }
     }
 
+    fun getTimeline(): List<TimelineEntry> {
+        return timelineEntries.toList()
+    }
+
     /**
      * アプリがフォアグラウンドに起動または復帰した時のハンドラ
      */
     fun onAppForeground(packageName: String, appName: String, timestampMs: Long): ThresholdAlert? {
+        checkHourlyReset(timestampMs)
+
         // スクリーンセッションの開始または休憩明け復旧
         if (screenSessionStartedAtMs == 0L || (isScreenOff && timestampMs - screenOffStartedAtMs > screenRestBufferMs)) {
             resetAllSessions(timestampMs)
@@ -74,12 +78,17 @@ class UsageSessionTracker(
         isScreenOff = false
 
         if (ignoredPackages.contains(packageName)) {
-            // ランチャー等の無視対象アプリ
+            // 除外アプリ（ランチャーやユーザー設定除外）
+            recordPreviousAppTimeline(timestampMs)
+            currentActivePackage = null
+            lastActiveAppInfo = null
             return null
         }
 
         val previousPkg = currentActivePackage
         if (previousPkg != null && previousPkg != packageName) {
+            recordPreviousAppTimeline(timestampMs)
+
             val prevSession = activeSessions[previousPkg]
             if (prevSession != null) {
                 prevSession.isBufferActive = true
@@ -88,14 +97,16 @@ class UsageSessionTracker(
         }
 
         currentActivePackage = packageName
-        var session = activeSessions[packageName]
+        lastActiveAppInfo = Pair(packageName, appName)
+        lastAppSwitchedAtMs = timestampMs
 
+        var session = activeSessions[packageName]
         if (session != null) {
-            // ザッピングによる再訪問: 以前の時間をそのまま維持し、アクティブへ復帰
+            // ザッピングによる再訪問
             session.isBufferActive = false
             session.lastActiveAtMs = timestampMs
         } else {
-            // この一連の操作セッションで初めて開いたアプリ
+            // この1時間/セッションで初めて開いたアプリ
             session = AppSession(
                 packageName = packageName,
                 appName = appName,
@@ -119,6 +130,9 @@ class UsageSessionTracker(
             session.isBufferActive = true
             session.bufferStartedAtMs = timestampMs
         }
+        if (currentActivePackage == packageName) {
+            recordPreviousAppTimeline(timestampMs)
+        }
     }
 
     /**
@@ -127,6 +141,7 @@ class UsageSessionTracker(
     fun onScreenOff(timestampMs: Long) {
         isScreenOff = true
         screenOffStartedAtMs = timestampMs
+        recordPreviousAppTimeline(timestampMs)
         val currentPkg = currentActivePackage
         if (currentPkg != null) {
             val session = activeSessions[currentPkg]
@@ -139,11 +154,10 @@ class UsageSessionTracker(
      * 画面点灯時のハンドラ
      */
     fun onScreenOn(timestampMs: Long) {
+        checkHourlyReset(timestampMs)
         if (isScreenOff && (timestampMs - screenOffStartedAtMs <= screenRestBufferMs)) {
-            // 60秒以内の瞬時の画面点灯なら一連のセッションとして継続
             isScreenOff = false
         } else if (isScreenOff) {
-            // 画面を消して60秒以上休憩したため、全アプリの連続時間をリセット
             resetAllSessions(timestampMs)
             screenSessionStartedAtMs = timestampMs
             isScreenOff = false
@@ -156,6 +170,8 @@ class UsageSessionTracker(
      * 定周期ポーリングでの時間進行としきい値チェック
      */
     fun onTick(timestampMs: Long): ThresholdAlert? {
+        checkHourlyReset(timestampMs)
+
         if (isScreenOff) {
             if (timestampMs - screenOffStartedAtMs > screenRestBufferMs) {
                 resetAllSessions(screenOffStartedAtMs)
@@ -163,7 +179,6 @@ class UsageSessionTracker(
             return null
         }
 
-        // 現在アクティブなアプリの実利用時間を1秒進める（ザッピング中も開いているアプリだけが進む）
         val currentPkg = currentActivePackage
         if (currentPkg != null) {
             val session = activeSessions[currentPkg]
@@ -176,11 +191,41 @@ class UsageSessionTracker(
         return checkThresholdAlert(timestampMs)
     }
 
+    /**
+     * 1時間ごとのリセット判定（毎正時またぎでリセット）
+     */
+    private fun checkHourlyReset(timestampMs: Long) {
+        val bucket = timestampMs / (60 * 60 * 1000L)
+        if (bucket > currentHourBucket) {
+            currentHourBucket = bucket
+            resetAllSessions(timestampMs)
+            screenSessionStartedAtMs = timestampMs
+        }
+    }
+
+    private fun recordPreviousAppTimeline(timestampMs: Long) {
+        val info = lastActiveAppInfo ?: return
+        val durationMs = timestampMs - lastAppSwitchedAtMs
+        val durationSec = durationMs / 1000L
+        if (durationSec >= 3) { // 3秒以上の滞在をタイムラインに記録
+            val entry = TimelineEntry(
+                packageName = info.first,
+                appName = info.second,
+                timestampMs = lastAppSwitchedAtMs,
+                durationSeconds = durationSec
+            )
+            timelineEntries.add(0, entry)
+            if (timelineEntries.size > 50) {
+                timelineEntries.removeAt(timelineEntries.lastIndex)
+            }
+        }
+        lastActiveAppInfo = null
+    }
+
     private fun checkThresholdAlert(timestampMs: Long): ThresholdAlert? {
         val currentPkg = currentActivePackage
         val session = if (currentPkg != null) activeSessions[currentPkg] else null
 
-        // 1. 各アプリごとの連続（累計）しきい値チェック
         if (session != null) {
             val durationMinutes = session.continuousDurationMs / (60 * 1000L)
             val pkgTriggered = triggeredThresholds.getOrPut(session.packageName) { mutableSetOf() }
@@ -199,7 +244,6 @@ class UsageSessionTracker(
             }
         }
 
-        // 2. 端末全体の連続スクリーンタイムのしきい値チェック
         val screenDurationMinutes = getTotalContinuousScreenDurationMs(timestampMs) / (60 * 1000L)
         for (threshold in thresholdMinutes.sorted()) {
             if (screenDurationMinutes >= threshold && !triggeredScreenThresholds.contains(threshold)) {

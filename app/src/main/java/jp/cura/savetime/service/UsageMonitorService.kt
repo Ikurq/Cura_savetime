@@ -73,8 +73,15 @@ class UsageMonitorService : Service() {
             lastAccessibilityEventTime = timestampMs
             if (isLauncher) {
                 dynamicIgnoredPackages.add(packageName)
+                tracker.ignoredPackages = dynamicIgnoredPackages
             }
             tracker.onAppForeground(packageName, appName, timestampMs)
+        }
+
+        fun refreshIgnoredPackages(context: Context) {
+            val store = jp.cura.savetime.util.ExcludedAppsStore(context)
+            dynamicIgnoredPackages.addAll(store.getExcludedPackages())
+            tracker.ignoredPackages = dynamicIgnoredPackages
         }
     }
 
@@ -101,6 +108,7 @@ class UsageMonitorService : Service() {
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         packageManagerHelper = packageManager
 
+        refreshIgnoredPackages(this)
         detectAndRegisterDefaultLauncher()
         createNotificationChannels()
         overlayManager = CuraOverlayManager(this)

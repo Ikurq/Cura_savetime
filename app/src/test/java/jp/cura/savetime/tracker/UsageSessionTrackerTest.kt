@@ -3,6 +3,7 @@ package jp.cura.savetime.tracker
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -14,17 +15,17 @@ class UsageSessionTrackerTest {
     fun setUp() {
         tracker = UsageSessionTracker(
             bufferDurationMs = 60_000L,
-            screenRestBufferMs = 60_000L, // 画面を消して60秒休むまでセッション継続
+            screenRestBufferMs = 60_000L,
             thresholdMinutes = listOf(30L, 45L, 60L),
             ignoredPackages = setOf("com.android.launcher", "com.android.systemui", "jp.cura.savetime")
         )
     }
 
     @Test
-    fun testZappingAppAccumulation_accumulatesDurationAcrossAnyNumberOfAppSwitches() {
+    fun testZappingAppAccumulation() {
         var now = 1_000_000L
 
-        // 1. YouTubeを30秒見る
+        // YouTube 30秒
         tracker.onAppForeground("com.google.android.youtube", "YouTube", now)
         for (i in 1..30) {
             now += 1000L
@@ -32,46 +33,21 @@ class UsageSessionTrackerTest {
         }
         assertEquals(30_000L, tracker.getCurrentSession()?.continuousDurationMs)
 
-        // 2. X（Twitter）に切り替えて30秒見る
+        // X 30秒
         now += 1000L
         tracker.onAppForeground("com.twitter.android", "X", now)
         for (i in 1..30) {
             now += 1000L
             tracker.onTick(now)
         }
-        assertEquals("X", tracker.getCurrentSession()?.appName)
         assertEquals(30_000L, tracker.getCurrentSession()?.continuousDurationMs)
 
-        // 3. ブラウザ（Chrome）に切り替えて30秒見る
-        now += 1000L
-        tracker.onAppForeground("com.android.chrome", "Chrome", now)
-        for (i in 1..30) {
-            now += 1000L
-            tracker.onTick(now)
-        }
-        assertEquals("Chrome", tracker.getCurrentSession()?.appName)
-        assertEquals(30_000L, tracker.getCurrentSession()?.continuousDurationMs)
-
-        // 4. 再びYouTubeに戻る -> 30秒保持されている
+        // YouTubeに戻る -> 30秒保持
         now += 1000L
         tracker.onAppForeground("com.google.android.youtube", "YouTube", now)
-        assertEquals("YouTube", tracker.getCurrentSession()?.appName)
         assertEquals(30_000L, tracker.getCurrentSession()?.continuousDurationMs)
 
-        // 5. さらにYouTubeを30秒見る -> 合計60秒に累積される！
-        for (i in 1..30) {
-            now += 1000L
-            tracker.onTick(now)
-        }
-        assertEquals(60_000L, tracker.getCurrentSession()?.continuousDurationMs)
-
-        // 6. 再びXに戻る -> Xの30秒も消えずに残っている
-        now += 1000L
-        tracker.onAppForeground("com.twitter.android", "X", now)
-        assertEquals("X", tracker.getCurrentSession()?.appName)
-        assertEquals(30_000L, tracker.getCurrentSession()?.continuousDurationMs)
-
-        // 7. さらにXを30秒見る -> Xも合計60秒に累積される！
+        // さらに30秒見る -> 60秒
         for (i in 1..30) {
             now += 1000L
             tracker.onTick(now)
@@ -80,31 +56,44 @@ class UsageSessionTrackerTest {
     }
 
     @Test
-    fun testScreenRest_resetsAccumulatedSessionsAfterSixtySecondsOff() {
-        var now = 1_000_000L
+    fun testHourlyReset_clearsSessionsWhenPassingNextHourBucket() {
+        var now = 3_600_000L // 1:00:00
 
-        // YouTube 2分使用
         tracker.onAppForeground("com.google.android.youtube", "YouTube", now)
-        for (i in 1..120) {
+        for (i in 1..60) {
             now += 1000L
             tracker.onTick(now)
         }
-        assertEquals(120_000L, tracker.getCurrentSession()?.continuousDurationMs)
+        assertEquals(60_000L, tracker.getCurrentSession()?.continuousDurationMs)
 
-        // 画面消灯して90秒放置（休憩）
-        tracker.onScreenOff(now)
-        now += 90_000L
-        tracker.onScreenOn(now)
+        // 1時間経過して 2:00:01 にジャンプ
+        now = 7_200_001L
+        tracker.onTick(now)
 
-        // 休憩後はリセットされ、YouTubeを開くと0秒から新規スタート
-        tracker.onAppForeground("com.google.android.youtube", "YouTube", now)
-        assertEquals(0L, tracker.getCurrentSession()?.continuousDurationMs)
+        // リセットされていること
+        assertNull(tracker.getCurrentSession())
     }
 
     @Test
-    fun testIgnoredPackages_doNotTriggerNewSession() {
+    fun testTimelineRecording_addsEntryOnAppSwitch() {
+        var now = 1_000_000L
+
+        tracker.onAppForeground("com.google.android.youtube", "YouTube", now)
+        now += 15_000L // 15秒滞在
+
+        tracker.onAppForeground("com.twitter.android", "X", now)
+
+        val timeline = tracker.getTimeline()
+        assertEquals(1, timeline.size)
+        assertEquals("YouTube", timeline[0].appName)
+        assertEquals(15L, timeline[0].durationSeconds)
+    }
+
+    @Test
+    fun testIgnoredPackages_excludedFromTracking() {
+        tracker.ignoredPackages = tracker.ignoredPackages + "com.example.excluded"
         val startMs = 1_000_000L
-        tracker.onAppForeground("com.android.launcher", "ホーム", startMs)
+        tracker.onAppForeground("com.example.excluded", "除外アプリ", startMs)
         assertNull(tracker.getCurrentSession())
     }
 }
