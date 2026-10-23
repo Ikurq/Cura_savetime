@@ -1,67 +1,43 @@
-# AI駆動開発 (AI-Driven Development) スターターキット
+# Cura SaveTime
 
-このリポジトリは、あらゆる言語や新規・既存プロジェクトに**コピー＆ペーストして流用できる、汎用AI駆動開発の土台テンプレート**です。
+スマートフォンの連続使用時間とアプリ切り替え（ザッピング）をリアルタイムで計測し、画面端のオーバーレイから通知・可視化する Android アプリケーションです。
 
-Google Antigravity、Cursor、Claude Code、GitHub Copilot などの主要AIコーディングツールに対応し、**自律テスト・品質検証（自動Lint/Formatter）・仕様駆動開発**の標準基盤を提供します。
+## 主な機能
 
----
+- **アプリ別累計時間・スマホ連続時間の計測**
+  - 短時間で複数のアプリを行き来する使い方（ザッピング）でも、アクティブセッション中のアプリ別使用時間とスマートフォン全体の連続使用時間を途切れず累積します。
+  - 1時間ごとの自動セッションリセット、および画面オフ / ホーム画面滞在（3分以上）による自動リセットに対応しています。
+- **エッジピeking・オーバーレイ（Cura Overlay）**
+  - 画面右端に常駐し、ドラッグで上下位置を調整できます。
+  - タップで現在のアプリ累計時間・スマホ連続時間・予算消化率を吹き出し表示します。
+  - 5分ごとの定期リマインド、および時間帯別上限（日中 30分 / 深夜 15分）超過時のアラートを表示します。
+- **タイムライン・ランキング記録**
+  - `:: TIMELINE`: 直近のアプリ切り替え履歴と滞在秒数を時系列で表示します。
+  - `:: WORST_CONTINUOUS_RANKING`: 連続使用時間のワースト記録をアプリ別・日付付きで保持します。
+- **監視除外設定（Exclusions）**
+  - 計測・オーバーレイ通知の対象外にするアプリを一覧またはピッカーから個別に指定できます。
+- **アプリ内アップデート**
+  - GitHub Releases と連携し、アプリ内の「更新確認」から最新 APK の確認・ダウンロード・上書きインストールが可能です。
 
-## 📁 リポジトリ全体構成
+## 必要な権限
 
-```text
-├── .github/
-│   ├── workflows/ci.yml           # GitHub Actions CI自動化（テスト & Lint）
-│   ├── copilot-instructions.md    # GitHub Copilot 用指示書
-│   └── pull_request_template.md   # PR作成テンプレート（品質チェックリスト付き）
-├── docs/
-│   ├── WORKFLOW.md                # AI駆動開発ワークフロー (Spec -> Tasks -> TDD)
-│   └── templates/
-│       ├── SPEC_TEMPLATE.md       # 機能仕様書テンプレート
-│       └── TASK_LIST_TEMPLATE.md  # タスク分解リストテンプレート
-├── templates/                     # 言語別即応設定テンプレート
-│   ├── python/                    # Python用 (pytest + ruff)
-│   └── typescript/                # TypeScript用 (vitest + Biome)
-├── AGENTS.md                      # Antigravity / 汎用AIエージェント向け指示規約
-├── CLAUDE.md                      # Claude Code 向け指示規約
-├── .cursorrules                   # Cursor 向け指示規約
-├── .editorconfig                  # エディタ共通フォーマット設定
-├── .gitignore                     # Git除外設定
-├── run.ps1                        # 共通コマンドランナー (PowerShell / Windows)
-├── run.sh                         # 共通コマンドランナー (Bash / Linux・Mac)
-├── Makefile                       # 共通タスク定義 (make test, make check 等)
-└── README.md                      # 本ドキュメント
+初回起動時にダッシュボード上部のステータスカードから以下の権限を有効化してください。
+
+1. **ユーザー補助サービス（Accessibility Service）** — 推奨・最優先。フォアグラウンドアプリの即時検知に使用します。
+2. **使用状況へのアクセス（Usage Stats）** — バックアップ検知および使用履歴の集計に使用します。
+3. **他のアプリの上に重ねて表示（Overlay）** — 画面端のキャラクターおよび吹き出し表示に使用します。
+4. **通知・バッテリー最適化の除外** — フォアグラウンドサービスの安定稼働に使用します。
+
+## ダウンロード
+
+最新版の APK は [GitHub Releases](https://github.com/Ikurq/Cura_savetime/releases/latest) からダウンロードできます。
+
+## ビルドとテスト
+
+```powershell
+# ユニットテストの実行
+./gradlew testDebugUnitTest
+
+# リリース APK のビルド
+./gradlew assembleRelease
 ```
-
----
-
-## ⚡ 統一タスクコマンド（ワンコマンドインターフェース）
-
-言語に関わらず、AIおよび開発者は以下の統一コマンドで操作できます。
-
-| タスク | PowerShell (Windows) | Bash (Mac/Linux) | Make |
-| :--- | :--- | :--- | :--- |
-| **一括検証** | `.\run.ps1 check` | `./run.sh check` | `make check` |
-| **テスト実行** | `.\run.ps1 test` | `./run.sh test` | `make test` |
-| **Lint検証** | `.\run.ps1 lint` | `./run.sh lint` | `make lint` |
-| **自動整形** | `.\run.ps1 format` | `./run.sh format` | `make format` |
-
----
-
-## 🔄 別のプロジェクトに応用・流用する手順
-
-新しいプロジェクトを立ち上げる、または既存プロジェクトに導入する際の手順です：
-
-### ステップ 1: ファイル群を新プロジェクトへコピー
-このリポジトリから、以下のコアファイルをコピーします：
-- `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, `.github/`
-- `docs/`
-- `run.ps1`, `run.sh`, `Makefile`, `.editorconfig`, `.gitignore`
-
-### ステップ 2: 言語テンプレートの選択
-- **Python の場合**: `templates/python/` 内の `pyproject.toml` をルートに配置
-- **TypeScript の場合**: `templates/typescript/` 内の `package.json`, `tsconfig.json` をルートに配置
-
-### ステップ 3: 開発開始
-1. `docs/WORKFLOW.md` を開き、AIに「この機能の仕様書を `docs/specs/` に作って」と指示
-2. 仕様合意後、「タスクリストに分解して1つずつテスト駆動で実装して」と指示
-3. AIが自動で `.\run.ps1 check` を回しながら安全に実装を完了
