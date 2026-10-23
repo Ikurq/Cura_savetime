@@ -6,17 +6,18 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
+import android.view.Gravity
 import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -25,7 +26,9 @@ import jp.cura.savetime.service.UsageMonitorService
 import jp.cura.savetime.util.AppNameResolver
 import jp.cura.savetime.util.AppUpdateManager
 import jp.cura.savetime.util.ExcludedAppsStore
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -47,8 +50,14 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         excludedAppsStore = ExcludedAppsStore(this)
+        UsageMonitorService.refreshIgnoredPackages(this)
         setupListeners()
         requestNotificationPermissionIfNeeded()
+
+        // 初回起動時に使用状況アクセス権限があれば自動的に常駐サービスを開始
+        if (hasUsageStatsPermission() && !UsageMonitorService.isRunning) {
+            startMonitorService()
+        }
     }
 
     override fun onResume() {
@@ -107,15 +116,50 @@ class MainActivity : AppCompatActivity() {
         binding.btnExcludeCurrentApp.setOnClickListener {
             val session = UsageMonitorService.tracker.getCurrentSession()
             if (session != null) {
-                excludedAppsStore.addExclusion(session.packageName)
-                UsageMonitorService.refreshIgnoredPackages(this)
-                Toast.makeText(this, "${session.appName} を除外リストに追加しました", Toast.LENGTH_SHORT).show()
-                updateUiState()
+                excludePackage(session.packageName, session.appName)
             }
+        }
+
+        binding.btnAddExclusion.setOnClickListener {
+            showAppExclusionPickerDialog()
         }
 
         binding.btnCheckUpdate.setOnClickListener {
             checkForAppUpdate()
+        }
+    }
+
+    private fun excludePackage(pkg: String, appName: String) {
+        excludedAppsStore.addExclusion(pkg)
+        UsageMonitorService.refreshIgnoredPackages(this)
+        UsageMonitorService.tracker.removePackageData(pkg)
+        Toast.makeText(this, "$appName を監視除外に設定しました", Toast.LENGTH_SHORT).show()
+        updateUiState()
+    }
+
+    private fun showAppExclusionPickerDialog() {
+        Toast.makeText(this, "アプリ一覧を読み込み中...", Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            val allApps = withContext(Dispatchers.IO) {
+                AppNameResolver.getLaunchableApps(this@MainActivity)
+            }
+            val currentExcluded = excludedAppsStore.getExcludedPackages()
+            val selectableApps = allApps.filter { !currentExcluded.contains(it.first) }
+
+            if (selectableApps.isEmpty()) {
+                Toast.makeText(this@MainActivity, "追加できるアプリがありません", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+
+            val names = selectableApps.map { it.second }.toTypedArray()
+            AlertDialog.Builder(this@MainActivity)
+                .setTitle("監視から除外するアプリを選択")
+                .setItems(names) { _, which ->
+                    val selected = selectableApps[which]
+                    excludePackage(selected.first, selected.second)
+                }
+                .setNegativeButton("キャンセル", null)
+                .show()
         }
     }
 
@@ -258,7 +302,7 @@ class MainActivity : AppCompatActivity() {
 
         if (timeline.isEmpty()) {
             val emptyTv = TextView(this).apply {
-                text = "アプリ切り替え履歴はありません"
+                text = "まだアプリ切り替え履歴がありません（別アプリを開くと即座に記録されます）"
                 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
                 textSize = 12f
                 setPadding(0, 4, 0, 4)
@@ -268,18 +312,19 @@ class MainActivity : AppCompatActivity() {
         }
 
         val timeFormatter = SimpleDateFormat("HH:mm:ss", Locale.JAPAN)
-        timeline.take(15).forEach { entry ->
+        timeline.take(20).forEach { entry ->
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
                 setPadding(0, 6, 0, 6)
             }
 
             val timeTv = TextView(this).apply {
                 text = timeFormatter.format(Date(entry.timestampMs))
                 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent_cyan))
-                textSize = 12f
+                textSize = 11f
                 typeface = android.graphics.Typeface.MONOSPACE
-                layoutParams = LinearLayout.LayoutParams(140, LinearLayout.LayoutParams.WRAP_CONTENT)
+                layoutParams = LinearLayout.LayoutParams(150, LinearLayout.LayoutParams.WRAP_CONTENT)
             }
 
             val nameTv = TextView(this).apply {
@@ -296,11 +341,25 @@ class MainActivity : AppCompatActivity() {
                 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent_lime))
                 textSize = 12f
                 typeface = android.graphics.Typeface.MONOSPACE
+                setPadding(8, 0, 12, 0)
+            }
+
+            val excludeBtn = Button(this).apply {
+                text = "除外"
+                textSize = 9f
+                backgroundTintList = ContextCompat.getColorStateList(this@MainActivity, R.color.bg_surface)
+                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent_amber))
+                layoutParams = LinearLayout.LayoutParams(110, 72)
+                setPadding(0, 0, 0, 0)
+                setOnClickListener {
+                    excludePackage(entry.packageName, entry.appName)
+                }
             }
 
             row.addView(timeTv)
             row.addView(nameTv)
             row.addView(durationTv)
+            row.addView(excludeBtn)
             binding.layoutTimelineList.addView(row)
         }
     }
@@ -311,7 +370,7 @@ class MainActivity : AppCompatActivity() {
 
         if (customExclusions.isEmpty()) {
             val emptyTv = TextView(this).apply {
-                text = "ユーザー追加の除外アプリはありません (現在計測中アプリから除外可能)"
+                text = "除外指定されたアプリはありません（「+ アプリを選んで除外」またはタイムライン横の「除外」から追加できます）"
                 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
                 textSize = 12f
                 setPadding(0, 4, 0, 4)
@@ -324,8 +383,8 @@ class MainActivity : AppCompatActivity() {
             val appName = AppNameResolver.resolveAppName(this, pkg)
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                setPadding(0, 4, 0, 4)
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, 6, 0, 6)
             }
 
             val nameTv = TextView(this).apply {
@@ -340,7 +399,8 @@ class MainActivity : AppCompatActivity() {
                 textSize = 10f
                 backgroundTintList = ContextCompat.getColorStateList(this@MainActivity, R.color.bg_surface)
                 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent_crimson))
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, 80)
+                layoutParams = LinearLayout.LayoutParams(120, 76)
+                setPadding(0, 0, 0, 0)
                 setOnClickListener {
                     excludedAppsStore.removeExclusion(pkg)
                     UsageMonitorService.refreshIgnoredPackages(this@MainActivity)
@@ -357,9 +417,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderRankingList() {
         binding.layoutRankingList.removeAllViews()
+        val activeSessions = UsageMonitorService.tracker.getActiveSessions()
         val records = UsageMonitorService.tracker.getRecords()
 
-        if (records.isEmpty()) {
+        if (activeSessions.isEmpty() && records.isEmpty()) {
             val emptyTv = TextView(this).apply {
                 text = getString(R.string.no_records)
                 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
@@ -370,43 +431,80 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        records.take(10).forEachIndexed { index, record ->
+        // 現在進行中の1時間セッションと確定レコードを統合表示（秒単位でも見えるようにする）
+        val mergedList = mutableListOf<Triple<String, String, Long>>() // (pkg, name, durationSec)
+        val seenPkgs = mutableSetOf<String>()
+
+        for (s in activeSessions) {
+            val sec = s.continuousDurationMs / 1000L
+            val recMaxSec = (records.find { it.packageName == s.packageName }?.maxContinuousMinutes ?: 0L) * 60L
+            mergedList.add(Triple(s.packageName, s.appName, maxOf(sec, recMaxSec)))
+            seenPkgs.add(s.packageName)
+        }
+        for (r in records) {
+            if (!seenPkgs.contains(r.packageName)) {
+                mergedList.add(Triple(r.packageName, r.appName, r.maxContinuousMinutes * 60L))
+            }
+        }
+
+        mergedList.sortByDescending { it.third }
+
+        mergedList.take(10).forEachIndexed { index, item ->
+            val (pkg, appName, totalSec) = item
+            val mins = totalSec / 60L
+            val secs = totalSec % 60L
+
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
-                setPadding(0, 10, 0, 10)
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, 8, 0, 8)
             }
 
             val rankTv = TextView(this).apply {
                 text = "#${index + 1}"
                 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent_cyan))
-                textSize = 13f
+                textSize = 12f
                 typeface = android.graphics.Typeface.MONOSPACE
-                layoutParams = LinearLayout.LayoutParams(60, LinearLayout.LayoutParams.WRAP_CONTENT)
+                layoutParams = LinearLayout.LayoutParams(65, LinearLayout.LayoutParams.WRAP_CONTENT)
             }
 
             val nameTv = TextView(this).apply {
-                text = record.appName
+                text = appName
                 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
                 textSize = 13f
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
 
             val durationTv = TextView(this).apply {
-                text = "最大連続 ${record.maxContinuousMinutes}分"
+                text = if (mins > 0) "${mins}分${secs}秒" else "${secs}秒"
                 setTextColor(
-                    if (record.maxContinuousMinutes >= 30) {
+                    if (mins >= 30) {
                         ContextCompat.getColor(this@MainActivity, R.color.accent_crimson)
                     } else {
                         ContextCompat.getColor(this@MainActivity, R.color.accent_lime)
                     }
                 )
-                textSize = 13f
+                textSize = 12f
                 typeface = android.graphics.Typeface.MONOSPACE
+                setPadding(8, 0, 12, 0)
+            }
+
+            val excludeBtn = Button(this).apply {
+                text = "除外"
+                textSize = 9f
+                backgroundTintList = ContextCompat.getColorStateList(this@MainActivity, R.color.bg_surface)
+                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent_amber))
+                layoutParams = LinearLayout.LayoutParams(110, 72)
+                setPadding(0, 0, 0, 0)
+                setOnClickListener {
+                    excludePackage(pkg, appName)
+                }
             }
 
             row.addView(rankTv)
             row.addView(nameTv)
             row.addView(durationTv)
+            row.addView(excludeBtn)
             binding.layoutRankingList.addView(row)
         }
     }

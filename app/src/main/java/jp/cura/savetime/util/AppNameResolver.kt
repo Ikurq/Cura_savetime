@@ -89,4 +89,39 @@ object AppNameResolver {
         if (raw.isBlank()) return "アプリ"
         return raw.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
     }
+
+    /**
+     * 端末にインストールされているランチャー起動可能なアプリ一覧（パッケージ名, 表示名）を取得
+     */
+    fun getLaunchableApps(context: Context): List<Pair<String, String>> {
+        val pm = context.packageManager
+        val intent = android.content.Intent(android.content.Intent.ACTION_MAIN, null).apply {
+            addCategory(android.content.Intent.CATEGORY_LAUNCHER)
+        }
+        val resolveList = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.queryIntentActivities(intent, PackageManager.ResolveInfoFlags.of(0L))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.queryIntentActivities(intent, 0)
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+
+        val map = mutableMapOf<String, String>()
+        for (info in resolveList) {
+            val pkg = info.activityInfo?.packageName ?: continue
+            if (pkg == context.packageName) continue
+            val label = try {
+                info.loadLabel(pm).toString()
+            } catch (_: Exception) {
+                resolveAppName(context, pkg)
+            }
+            map[pkg] = label
+        }
+        return map.entries
+            .map { it.key to it.value }
+            .sortedBy { it.second.lowercase() }
+    }
 }

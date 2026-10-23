@@ -10,9 +10,10 @@ import jp.cura.savetime.model.TimelineEntry
  *
  * 特徴:
  * 1. 【1時間ごとの定時リセット】: 毎正時（例: 14:00, 15:00...）に累計セッションを自動確定・リセット。
- * 2. 【タイムライン履歴】: 直近のアプリ利用遷移と滞在秒数を保持（最大50件）。
- * 3. 【除外パッケージの動的判定】: 設定された除外アプリを無視。
- * 4. 【ザッピング累積】: スマホ操作中のアプリ行き来をすべて累積。
+ * 2. 【リアルタイム・タイムライン履歴】: アプリを開いた瞬間からタイムライン先頭に配置し、滞在秒数をリアルタイム更新（最大50件）。
+ * 3. 【リアルタイム・ランキング連動】: セッション確定前でも現在の1時間の累計利用状況をランキングに即座に反映。
+ * 4. 【除外パッケージの動的判定】: 設定された除外アプリを即時除外・クリーンアップ。
+ * 5. 【ザッピング累積】: スマホ操作中のアプリ行き来をすべて累積。
  */
 class UsageSessionTracker(
     val bufferDurationMs: Long = 60_000L,
@@ -35,7 +36,6 @@ class UsageSessionTracker(
     // タイムライン履歴（直近50件）
     private val timelineEntries = mutableListOf<TimelineEntry>()
     private var lastAppSwitchedAtMs: Long = 0L
-    private var lastActiveAppInfo: Pair<String, String>? = null // (packageName, appName)
 
     // 過去の確定レコード & アラートトリガー履歴
     private val records = mutableMapOf<String, ContinuousRecord>()
@@ -47,6 +47,15 @@ class UsageSessionTracker(
         return activeSessions[currentPkg]
     }
 
+    /**
+     * 現在開いているすべてのアプリセッション一覧（累計時間順）
+     */
+    fun getActiveSessions(): List<AppSession> {
+        return activeSessions.values
+            .filter { !ignoredPackages.contains(it.packageName) && it.continuousDurationMs > 0 }
+            .sortedByDescending { it.continuousDurationMs }
+    }
+
     fun getTotalContinuousScreenDurationMs(now: Long = System.currentTimeMillis()): Long {
         if (screenSessionStartedAtMs == 0L) return 0L
         if (isScreenOff && (now - screenOffStartedAtMs > screenRestBufferMs)) {
@@ -55,12 +64,60 @@ class UsageSessionTracker(
         return (now - screenSessionStartedAtMs).coerceAtLeast(0L)
     }
 
+    /**
+     * 確定済みレコードと現在進行中のセッションを統合したランキングリストを取得
+     */
     fun getRecords(): List<ContinuousRecord> {
-        return records.values.sortedByDescending { it.maxContinuousMinutes }
+        val combined = mutableMapOf<String, ContinuousRecord>()
+
+        for ((pkg, rec) in records) {
+            if (!ignoredPackages.contains(pkg)) {
+                combined[pkg] = rec.copy()
+            }
+        }
+
+        for ((pkg, session) in activeSessions) {
+            if (ignoredPackages.contains(pkg)) continue
+            val currentMins = session.continuousDurationMs / (60 * 1000L)
+            val currentSecs = session.continuousDurationMs / 1000L
+            if (currentSecs <= 0L) continue
+
+            val existing = combined[pkg]
+            if (existing != null) {
+                if (currentMins > existing.maxContinuousMinutes) {
+                    existing.maxContinuousMinutes = currentMins
+                }
+            } else {
+                combined[pkg] = ContinuousRecord(
+                    packageName = pkg,
+                    appName = session.appName,
+                    maxContinuousMinutes = currentMins,
+                    totalUsageMinutes = currentMins,
+                    sessionCount = 1
+                )
+            }
+        }
+
+        return combined.values.sortedWith(
+            compareByDescending<ContinuousRecord> { it.maxContinuousMinutes }
+                .thenByDescending { activeSessions[it.packageName]?.continuousDurationMs ?: 0L }
+        )
     }
 
     fun getTimeline(): List<TimelineEntry> {
-        return timelineEntries.toList()
+        return timelineEntries.filter { !ignoredPackages.contains(it.packageName) }
+    }
+
+    /**
+     * 特定のパッケージを除外した際に、既存のセッション・タイムラインからも削除する
+     */
+    fun removePackageData(packageName: String) {
+        activeSessions.remove(packageName)
+        records.remove(packageName)
+        timelineEntries.removeAll { it.packageName == packageName }
+        if (currentActivePackage == packageName) {
+            currentActivePackage = null
+        }
     }
 
     /**
@@ -78,16 +135,23 @@ class UsageSessionTracker(
         isScreenOff = false
 
         if (ignoredPackages.contains(packageName)) {
-            // 除外アプリ（ランチャーやユーザー設定除外）
-            recordPreviousAppTimeline(timestampMs)
+            // 除外アプリ（ランチャーやユーザー設定除外）に移行した場合は前アプリを一時中断にする
+            val previousPkg = currentActivePackage
+            if (previousPkg != null) {
+                finalizeTopTimelineEntry(timestampMs)
+                val prevSession = activeSessions[previousPkg]
+                if (prevSession != null) {
+                    prevSession.isBufferActive = true
+                    prevSession.bufferStartedAtMs = timestampMs
+                }
+            }
             currentActivePackage = null
-            lastActiveAppInfo = null
             return null
         }
 
         val previousPkg = currentActivePackage
         if (previousPkg != null && previousPkg != packageName) {
-            recordPreviousAppTimeline(timestampMs)
+            finalizeTopTimelineEntry(timestampMs)
 
             val prevSession = activeSessions[previousPkg]
             if (prevSession != null) {
@@ -96,9 +160,22 @@ class UsageSessionTracker(
             }
         }
 
-        currentActivePackage = packageName
-        lastActiveAppInfo = Pair(packageName, appName)
-        lastAppSwitchedAtMs = timestampMs
+        // 同一アプリのウィンドウ内遷移でない場合のみ新規タイムラインエントリを追加
+        if (previousPkg != packageName) {
+            currentActivePackage = packageName
+            lastAppSwitchedAtMs = timestampMs
+
+            val newEntry = TimelineEntry(
+                packageName = packageName,
+                appName = appName,
+                timestampMs = timestampMs,
+                durationSeconds = 1L
+            )
+            timelineEntries.add(0, newEntry)
+            if (timelineEntries.size > 50) {
+                timelineEntries.removeAt(timelineEntries.lastIndex)
+            }
+        }
 
         var session = activeSessions[packageName]
         if (session != null) {
@@ -131,7 +208,7 @@ class UsageSessionTracker(
             session.bufferStartedAtMs = timestampMs
         }
         if (currentActivePackage == packageName) {
-            recordPreviousAppTimeline(timestampMs)
+            finalizeTopTimelineEntry(timestampMs)
         }
     }
 
@@ -141,7 +218,7 @@ class UsageSessionTracker(
     fun onScreenOff(timestampMs: Long) {
         isScreenOff = true
         screenOffStartedAtMs = timestampMs
-        recordPreviousAppTimeline(timestampMs)
+        finalizeTopTimelineEntry(timestampMs)
         val currentPkg = currentActivePackage
         if (currentPkg != null) {
             val session = activeSessions[currentPkg]
@@ -185,6 +262,12 @@ class UsageSessionTracker(
             if (session != null && !session.isBufferActive) {
                 session.continuousDurationMs += 1000L
                 session.lastActiveAtMs = timestampMs
+
+                // タイムライン先頭が現在アクティブなアプリなら滞在秒数をリアルタイム更新
+                if (timelineEntries.isNotEmpty() && timelineEntries[0].packageName == currentPkg) {
+                    val elapsedSec = ((timestampMs - timelineEntries[0].timestampMs) / 1000L).coerceAtLeast(1L)
+                    timelineEntries[0] = timelineEntries[0].copy(durationSeconds = elapsedSec)
+                }
             }
         }
 
@@ -207,23 +290,12 @@ class UsageSessionTracker(
         }
     }
 
-    private fun recordPreviousAppTimeline(timestampMs: Long) {
-        val info = lastActiveAppInfo ?: return
-        val durationMs = timestampMs - lastAppSwitchedAtMs
-        val durationSec = durationMs / 1000L
-        if (durationSec >= 3) { // 3秒以上の滞在をタイムラインに記録
-            val entry = TimelineEntry(
-                packageName = info.first,
-                appName = info.second,
-                timestampMs = lastAppSwitchedAtMs,
-                durationSeconds = durationSec
-            )
-            timelineEntries.add(0, entry)
-            if (timelineEntries.size > 50) {
-                timelineEntries.removeAt(timelineEntries.lastIndex)
-            }
+    private fun finalizeTopTimelineEntry(timestampMs: Long) {
+        val currentPkg = currentActivePackage ?: return
+        if (timelineEntries.isNotEmpty() && timelineEntries[0].packageName == currentPkg) {
+            val elapsedSec = ((timestampMs - timelineEntries[0].timestampMs) / 1000L).coerceAtLeast(1L)
+            timelineEntries[0] = timelineEntries[0].copy(durationSeconds = elapsedSec)
         }
-        lastActiveAppInfo = null
     }
 
     private fun checkThresholdAlert(timestampMs: Long): ThresholdAlert? {

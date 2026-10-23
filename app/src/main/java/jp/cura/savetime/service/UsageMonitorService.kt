@@ -80,6 +80,7 @@ class UsageMonitorService : Service() {
 
         fun refreshIgnoredPackages(context: Context) {
             val store = jp.cura.savetime.util.ExcludedAppsStore(context)
+            dynamicIgnoredPackages.clear()
             dynamicIgnoredPackages.addAll(store.getExcludedPackages())
             tracker.ignoredPackages = dynamicIgnoredPackages
         }
@@ -129,7 +130,8 @@ class UsageMonitorService : Service() {
         }
 
         serviceScope.launch {
-            var lastQueryTime = System.currentTimeMillis() - 10_000L
+            // 初回起動時は直近15分間の履歴をスキャンしてタイムラインや初期状態を即座に構築
+            var lastQueryTime = System.currentTimeMillis() - (15 * 60 * 1000L)
 
             while (isActive) {
                 val now = System.currentTimeMillis()

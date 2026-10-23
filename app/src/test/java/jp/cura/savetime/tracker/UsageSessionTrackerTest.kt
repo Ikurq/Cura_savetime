@@ -75,18 +75,22 @@ class UsageSessionTrackerTest {
     }
 
     @Test
-    fun testTimelineRecording_addsEntryOnAppSwitch() {
+    fun testTimelineRecording_addsEntryImmediatelyAndUpdatesDuration() {
         var now = 1_000_000L
 
         tracker.onAppForeground("com.google.android.youtube", "YouTube", now)
-        now += 15_000L // 15秒滞在
+        // 開いた瞬間にタイムライン先頭に登録されること
+        assertEquals(1, tracker.getTimeline().size)
+        assertEquals("YouTube", tracker.getTimeline()[0].appName)
 
+        now += 15_000L // 15秒滞在して次のアプリへ
         tracker.onAppForeground("com.twitter.android", "X", now)
 
         val timeline = tracker.getTimeline()
-        assertEquals(1, timeline.size)
-        assertEquals("YouTube", timeline[0].appName)
-        assertEquals(15L, timeline[0].durationSeconds)
+        assertEquals(2, timeline.size)
+        assertEquals("X", timeline[0].appName)
+        assertEquals("YouTube", timeline[1].appName)
+        assertEquals(15L, timeline[1].durationSeconds)
     }
 
     @Test
