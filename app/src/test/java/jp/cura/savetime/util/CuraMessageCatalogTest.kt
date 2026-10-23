@@ -10,14 +10,23 @@ class CuraMessageCatalogTest {
     fun testDefaultCatalog_resolvesPlaceholdersForAppAndScreenIntervals() {
         val catalog = CuraMessageCatalog.defaultCatalog()
 
-        val appMsg = catalog.formatAppIntervalMessage(
+        val appMsg15 = catalog.formatAppIntervalMessage(
             appName = "YouTube",
             appMinutes = 15L,
             screenMinutes = 25L,
             remainingBudgetMinutes = 5L
         )
-        assertTrue(appMsg.contains("YouTube"))
-        assertTrue(appMsg.contains("15"))
+        assertTrue(appMsg15.contains("15"))
+        assertTrue(!appMsg15.contains("{app}") && !appMsg15.contains("{remain}"))
+
+        val appMsgDefault = catalog.formatAppIntervalMessage(
+            appName = "YouTube",
+            appMinutes = 65L,
+            screenMinutes = 65L,
+            remainingBudgetMinutes = 0L
+        )
+        assertTrue(appMsgDefault.contains("YouTube"))
+        assertTrue(appMsgDefault.contains("65"))
 
         val screenMsg = catalog.formatScreenIntervalMessage(
             appName = "X",
@@ -26,6 +35,7 @@ class CuraMessageCatalogTest {
             remainingBudgetMinutes = 0L
         )
         assertTrue(screenMsg.contains("30"))
+        assertTrue(!screenMsg.contains("{screenMin}"))
     }
 
     @Test
