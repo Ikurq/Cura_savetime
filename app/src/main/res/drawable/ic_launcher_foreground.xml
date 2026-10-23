@@ -1,0 +1,36 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Outer Cyber Ring -->
+    <path
+        android:pathData="M54,20 C35.2,20 20,35.2 20,54 C20,72.8 35.2,88 54,88 C72.8,88 88,72.8 88,54 C88,35.2 72.8,20 54,20 Z M54,84 C37.4,84 24,70.6 24,54 C24,37.4 37.4,24 54,24 C70.6,24 84,37.4 84,54 C84,70.6 70.6,84 54,84 Z"
+        android:fillColor="#06B6D4"/>
+
+    <!-- Decorative Notches -->
+    <path
+        android:pathData="M54,16 L54,24 M54,84 L54,92 M16,54 L24,54 M84,54 L92,54"
+        android:strokeColor="#06B6D4"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"/>
+
+    <!-- Shield Motif (Cura: The Guardian) -->
+    <path
+        android:pathData="M54,34 C54,34 68,38 68,48 C68,60 54,74 54,74 C54,74 40,60 40,48 C40,38 54,34 54,34 Z"
+        android:fillColor="#F472B6"/>
+
+    <!-- Core Pulse Center -->
+    <path
+        android:pathData="M54,48 m-6,0 a6,6 0 1,1 12,0 a6,6 0 1,1 -12,0"
+        android:fillColor="#FFFFFF"/>
+
+    <!-- Dynamic Line (Energy flow) -->
+    <path
+        android:pathData="M30,78 L45,63 M78,30 L63,45"
+        android:strokeColor="#84CC16"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"/>
+</vector>
