@@ -84,6 +84,9 @@ class UsageMonitorService : Service() {
             dynamicIgnoredPackages.addAll(store.getExcludedPackages())
             tracker.ignoredPackages = dynamicIgnoredPackages
         }
+
+        @Volatile
+        var shouldReloadMessageCatalog = false
     }
 
     private val serviceJob = Job()
@@ -92,6 +95,7 @@ class UsageMonitorService : Service() {
     private lateinit var notificationManager: NotificationManager
     private lateinit var packageManagerHelper: PackageManager
     private lateinit var overlayManager: CuraOverlayManager
+    private lateinit var ghostAppsStore: jp.cura.savetime.util.GhostAppsStore
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -112,6 +116,7 @@ class UsageMonitorService : Service() {
         refreshIgnoredPackages(this)
         detectAndRegisterDefaultLauncher()
         createNotificationChannels()
+        ghostAppsStore = jp.cura.savetime.util.GhostAppsStore(this)
         overlayManager = CuraOverlayManager(this)
 
         val filter = IntentFilter().apply {
@@ -157,11 +162,22 @@ class UsageMonitorService : Service() {
 
                 val session = tracker.getCurrentSession()
                 val totalScreenMs = tracker.getTotalContinuousScreenDurationMs(now)
+                if (shouldReloadMessageCatalog) {
+                    shouldReloadMessageCatalog = false
+                    overlayManager.reloadMessageCatalog()
+                }
+                val isGhost = if (session != null && !session.isBufferActive) {
+                    ghostAppsStore.isGhostModeApp(session.packageName)
+                } else {
+                    false
+                }
                 overlayManager.updateState(
+                    packageName = session?.packageName,
                     appName = session?.appName ?: "待機中",
                     continuousDurationMs = session?.continuousDurationMs ?: 0L,
                     totalScreenDurationMs = totalScreenMs,
-                    isBuffer = session?.isBufferActive ?: false
+                    isBuffer = session?.isBufferActive ?: false,
+                    isGhostMode = isGhost
                 )
 
                 delay(1000L) // 1秒間隔でUI/オーバーレイ更新

@@ -65,6 +65,18 @@
             android:textStyle="bold" />
 
         <TextView
+            android:id="@+id/tvBalloonDialogue"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:background="@color/bg_surface"
+            android:paddingHorizontal="6dp"
+            android:paddingVertical="4dp"
+            android:text="[5分枠] メッセージ"
+            android:textColor="@color/text_primary"
+            android:textSize="11.5sp" />
+
+        <TextView
             android:id="@+id/tvBalloonBudgetRemaining"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

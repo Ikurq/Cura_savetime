@@ -2,6 +2,8 @@ package jp.cura.savetime
 
 import android.app.AppOpsManager
 import android.content.BroadcastReceiver
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -14,6 +16,7 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -25,7 +28,9 @@ import jp.cura.savetime.databinding.ActivityMainBinding
 import jp.cura.savetime.service.UsageMonitorService
 import jp.cura.savetime.util.AppNameResolver
 import jp.cura.savetime.util.AppUpdateManager
+import jp.cura.savetime.util.CuraMessageCatalog
 import jp.cura.savetime.util.ExcludedAppsStore
+import jp.cura.savetime.util.GhostAppsStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -37,6 +42,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var excludedAppsStore: ExcludedAppsStore
+    private lateinit var ghostAppsStore: GhostAppsStore
 
     private val stateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -50,7 +56,9 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         excludedAppsStore = ExcludedAppsStore(this)
+        ghostAppsStore = GhostAppsStore(this)
         UsageMonitorService.refreshIgnoredPackages(this)
+        binding.switchAutoGameGhost.isChecked = ghostAppsStore.isAutoDetectGameCategoryEnabled()
         setupListeners()
         requestNotificationPermissionIfNeeded()
 
@@ -144,6 +152,22 @@ class MainActivity : AppCompatActivity() {
         binding.timelineGraphView.onInspectionChanged = { bar, inspectedSec ->
             updateInspectorText(bar, inspectedSec)
         }
+
+        binding.switchAutoGameGhost.setOnCheckedChangeListener { _, isChecked ->
+            ghostAppsStore.setAutoDetectGameCategoryEnabled(isChecked)
+        }
+
+        binding.btnAddGhostApp.setOnClickListener {
+            showGhostAppPickerDialog()
+        }
+
+        binding.btnCopyAiPrompt.setOnClickListener {
+            copyAiPromptToClipboard()
+        }
+
+        binding.btnEditDialogueJson.setOnClickListener {
+            showEditDialogueJsonDialog()
+        }
     }
 
     private fun applyTimelineZoom(spanSeconds: Int) {
@@ -206,6 +230,87 @@ class MainActivity : AppCompatActivity() {
                 .setNegativeButton("キャンセル", null)
                 .show()
         }
+    }
+
+    private fun addGhostModePackage(pkg: String, appName: String) {
+        ghostAppsStore.addGhostPackage(pkg)
+        Toast.makeText(this, "$appName を半透明・当たり判定なしに設定しました", Toast.LENGTH_SHORT).show()
+        updateUiState()
+    }
+
+    private fun showGhostAppPickerDialog() {
+        Toast.makeText(this, "アプリ一覧を読み込み中...", Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            val allApps = withContext(Dispatchers.IO) {
+                AppNameResolver.getLaunchableApps(this@MainActivity)
+            }
+            val currentGhost = ghostAppsStore.getGhostPackages()
+            val selectableApps = allApps.filter { !currentGhost.contains(it.first) }
+
+            if (selectableApps.isEmpty()) {
+                Toast.makeText(this@MainActivity, "追加できるアプリがありません", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+
+            val names = selectableApps.map { it.second }.toTypedArray()
+            AlertDialog.Builder(this@MainActivity)
+                .setTitle("半透明・当たり判定なしにするアプリを選択")
+                .setItems(names) { _, which ->
+                    val selected = selectableApps[which]
+                    addGhostModePackage(selected.first, selected.second)
+                }
+                .setNegativeButton("キャンセル", null)
+                .show()
+        }
+    }
+
+    private fun copyAiPromptToClipboard() {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = ClipData.newPlainText("Cura AI Prompt", CuraMessageCatalog.AI_GENERATION_PROMPT)
+        clipboard.setPrimaryClip(clip)
+        Toast.makeText(
+            this,
+            "AI用プロンプトをコピーしました。他のAIに貼り付けてJSONを作成させてください",
+            Toast.LENGTH_LONG
+        ).show()
+    }
+
+    private fun showEditDialogueJsonDialog() {
+        val currentCatalog = CuraMessageCatalog.load(this)
+        val editText = EditText(this).apply {
+            setText(CuraMessageCatalog.toPrettyJson(currentCatalog))
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+            setBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.bg_void))
+            textSize = 11f
+            typeface = android.graphics.Typeface.MONOSPACE
+            minLines = 10
+            maxLines = 18
+            setPadding(24, 20, 24, 20)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("5分ごとセリフ枠 (JSON) の貼付・編集")
+            .setView(editText)
+            .setPositiveButton("保存して反映") { _, _ ->
+                val raw = editText.text.toString()
+                    .removePrefix("```json")
+                    .removePrefix("```")
+                    .removeSuffix("```")
+                    .trim()
+                if (CuraMessageCatalog.saveCustomJson(this, raw)) {
+                    UsageMonitorService.shouldReloadMessageCatalog = true
+                    Toast.makeText(this, "セリフ枠を更新しました", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "JSON形式が不正です。構造を確認してください", Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNeutralButton("初期枠に戻す") { _, _ ->
+                CuraMessageCatalog.resetCustomJson(this)
+                UsageMonitorService.shouldReloadMessageCatalog = true
+                Toast.makeText(this, "標準のセリフ枠に戻しました", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("キャンセル", null)
+            .show()
     }
 
     private fun checkForAppUpdate() {
@@ -363,6 +468,7 @@ class MainActivity : AppCompatActivity() {
 
         renderTimelineList()
         renderExclusionsList()
+        renderGhostAppsList()
         renderRankingList()
     }
 
@@ -450,12 +556,38 @@ class MainActivity : AppCompatActivity() {
                 setPadding(8, 0, 12, 0)
             }
 
+            val ghostBtn = Button(this).apply {
+                val isGhost = ghostAppsStore.getGhostPackages().contains(entry.packageName)
+                text = if (isGhost) "透過中" else "透過"
+                textSize = 9f
+                backgroundTintList = ContextCompat.getColorStateList(this@MainActivity, R.color.bg_surface)
+                setTextColor(
+                    ContextCompat.getColor(
+                        this@MainActivity,
+                        if (isGhost) R.color.accent_lime else R.color.accent_cyan
+                    )
+                )
+                layoutParams = LinearLayout.LayoutParams(105, 72).apply {
+                    marginEnd = 6
+                }
+                setPadding(0, 0, 0, 0)
+                setOnClickListener {
+                    if (isGhost) {
+                        ghostAppsStore.removeGhostPackage(entry.packageName)
+                        Toast.makeText(this@MainActivity, "${entry.appName} の透過モードを解除しました", Toast.LENGTH_SHORT).show()
+                        updateUiState()
+                    } else {
+                        addGhostModePackage(entry.packageName, entry.appName)
+                    }
+                }
+            }
+
             val excludeBtn = Button(this).apply {
                 text = "除外"
                 textSize = 9f
                 backgroundTintList = ContextCompat.getColorStateList(this@MainActivity, R.color.bg_surface)
                 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent_amber))
-                layoutParams = LinearLayout.LayoutParams(110, 72)
+                layoutParams = LinearLayout.LayoutParams(105, 72)
                 setPadding(0, 0, 0, 0)
                 setOnClickListener {
                     excludePackage(entry.packageName, entry.appName)
@@ -465,6 +597,7 @@ class MainActivity : AppCompatActivity() {
             row.addView(timeTv)
             row.addView(nameTv)
             row.addView(durationTv)
+            row.addView(ghostBtn)
             row.addView(excludeBtn)
             binding.layoutTimelineList.addView(row)
         }
@@ -518,6 +651,56 @@ class MainActivity : AppCompatActivity() {
             row.addView(nameTv)
             row.addView(removeBtn)
             binding.layoutExclusionsList.addView(row)
+        }
+    }
+
+    private fun renderGhostAppsList() {
+        binding.layoutGhostAppsList.removeAllViews()
+        val ghostPkgs = ghostAppsStore.getGhostPackages()
+
+        if (ghostPkgs.isEmpty()) {
+            val emptyTv = TextView(this).apply {
+                text = "個別指定されたアプリはありません（「+ アプリを選んで追加」またはタイムライン横の「透過」からゲーム等を追加できます）"
+                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+                textSize = 11.5f
+                setPadding(0, 4, 0, 4)
+            }
+            binding.layoutGhostAppsList.addView(emptyTv)
+            return
+        }
+
+        ghostPkgs.forEach { pkg ->
+            val appName = AppNameResolver.resolveAppName(this, pkg)
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, 6, 0, 6)
+            }
+
+            val nameTv = TextView(this).apply {
+                text = "$appName [半透明・当たり判定なし]"
+                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent_cyan))
+                textSize = 12f
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+
+            val removeBtn = Button(this).apply {
+                text = "解除"
+                textSize = 10f
+                backgroundTintList = ContextCompat.getColorStateList(this@MainActivity, R.color.bg_surface)
+                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent_crimson))
+                layoutParams = LinearLayout.LayoutParams(120, 76)
+                setPadding(0, 0, 0, 0)
+                setOnClickListener {
+                    ghostAppsStore.removeGhostPackage(pkg)
+                    Toast.makeText(this@MainActivity, "$appName の半透明・透過モードを解除しました", Toast.LENGTH_SHORT).show()
+                    updateUiState()
+                }
+            }
+
+            row.addView(nameTv)
+            row.addView(removeBtn)
+            binding.layoutGhostAppsList.addView(row)
         }
     }
 

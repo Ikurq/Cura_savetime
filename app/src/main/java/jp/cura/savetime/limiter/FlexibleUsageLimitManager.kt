@@ -33,9 +33,11 @@ class FlexibleUsageLimitManager(
     }
 
     private var lastNotifiedFiveMinMark = 0L
+    private var lastNotifiedScreenFiveMinMark = 0L
+    private val lastNotifiedAppFiveMinMarks = mutableMapOf<String, Long>()
 
     /**
-     * 5分刻みのリマインダー対象か判定（5分、10分、15分...）
+     * 5分刻みのリマインダー対象か判定（後方互換用）
      */
     fun shouldTriggerFiveMinuteReminder(continuousMinutes: Long): Boolean {
         if (continuousMinutes <= 0) {
@@ -45,6 +47,40 @@ class FlexibleUsageLimitManager(
 
         if (continuousMinutes % 5L == 0L && continuousMinutes != lastNotifiedFiveMinMark) {
             lastNotifiedFiveMinMark = continuousMinutes
+            return true
+        }
+        return false
+    }
+
+    /**
+     * 【アプリ別】5分ごとのリマインダー判定（5分, 10分, 15分...）
+     */
+    fun shouldTriggerAppFiveMinuteReminder(packageName: String, appMinutes: Long): Boolean {
+        if (packageName.isBlank() || appMinutes <= 0L) {
+            if (packageName.isNotBlank()) {
+                lastNotifiedAppFiveMinMarks.remove(packageName)
+            }
+            return false
+        }
+        val prev = lastNotifiedAppFiveMinMarks[packageName] ?: 0L
+        if (appMinutes % 5L == 0L && appMinutes != prev) {
+            lastNotifiedAppFiveMinMarks[packageName] = appMinutes
+            return true
+        }
+        return false
+    }
+
+    /**
+     * 【画面連続】5分ごとのリマインダー判定（5分, 10分, 15分...）
+     */
+    fun shouldTriggerScreenFiveMinuteReminder(screenMinutes: Long): Boolean {
+        if (screenMinutes <= 0L) {
+            lastNotifiedScreenFiveMinMark = 0L
+            lastNotifiedAppFiveMinMarks.clear()
+            return false
+        }
+        if (screenMinutes % 5L == 0L && screenMinutes != lastNotifiedScreenFiveMinMark) {
+            lastNotifiedScreenFiveMinMark = screenMinutes
             return true
         }
         return false

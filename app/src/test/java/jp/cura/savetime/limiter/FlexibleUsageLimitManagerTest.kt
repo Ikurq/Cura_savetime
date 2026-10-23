@@ -91,4 +91,24 @@ class FlexibleUsageLimitManagerTest {
         assertEquals(0L, limitManager.calculateRemainingHourlyBudget(30L))
         assertEquals(0L, limitManager.calculateRemainingHourlyBudget(45L))
     }
+
+    @Test
+    fun testIndependentAppAndScreenFiveMinuteTriggers() {
+        // 画面連続 5分、アプリA 3分 -> 画面5分のみ発火
+        assertFalse(limitManager.shouldTriggerAppFiveMinuteReminder("pkg.a", 3L))
+        assertTrue(limitManager.shouldTriggerScreenFiveMinuteReminder(5L))
+        assertFalse(limitManager.shouldTriggerScreenFiveMinuteReminder(5L))
+
+        // 画面連続 7分、アプリA 5分 -> アプリAの5分が発火
+        assertTrue(limitManager.shouldTriggerAppFiveMinuteReminder("pkg.a", 5L))
+        assertFalse(limitManager.shouldTriggerAppFiveMinuteReminder("pkg.a", 5L))
+        assertFalse(limitManager.shouldTriggerScreenFiveMinuteReminder(7L))
+
+        // 別アプリBが5分に達した場合も独立して発火
+        assertTrue(limitManager.shouldTriggerAppFiveMinuteReminder("pkg.b", 5L))
+
+        // 画面がリセット（0分）されたら再度5分で発火可能
+        assertFalse(limitManager.shouldTriggerScreenFiveMinuteReminder(0L))
+        assertTrue(limitManager.shouldTriggerScreenFiveMinuteReminder(5L))
+    }
 }
