@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
@@ -64,6 +65,16 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
         }
 
+        binding.btnGrantOverlayPermission.setOnClickListener {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val intent = Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:$packageName")
+                )
+                startActivity(intent)
+            }
+        }
+
         binding.switchMonitorDaemon.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
                 if (!hasUsageStatsPermission()) {
@@ -79,8 +90,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkPermissions() {
-        val hasPermission = hasUsageStatsPermission()
-        binding.layoutPermissionBanner.visibility = if (hasPermission) View.GONE else View.VISIBLE
+        val hasUsage = hasUsageStatsPermission()
+        binding.layoutPermissionBanner.visibility = if (hasUsage) View.GONE else View.VISIBLE
+
+        val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            Settings.canDrawOverlays(this)
+        } else {
+            true
+        }
+        binding.layoutOverlayPermissionBanner.visibility = if (hasOverlay) View.GONE else View.VISIBLE
     }
 
     private fun hasUsageStatsPermission(): Boolean {

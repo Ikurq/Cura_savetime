@@ -18,6 +18,7 @@ import androidx.core.app.NotificationCompat
 import jp.cura.savetime.MainActivity
 import jp.cura.savetime.R
 import jp.cura.savetime.model.ThresholdAlert
+import jp.cura.savetime.overlay.CuraOverlayManager
 import jp.cura.savetime.tracker.UsageSessionTracker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -58,6 +59,7 @@ class UsageMonitorService : Service() {
     private lateinit var usageStatsManager: UsageStatsManager
     private lateinit var notificationManager: NotificationManager
     private lateinit var packageManagerHelper: PackageManager
+    private lateinit var overlayManager: CuraOverlayManager
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -76,6 +78,7 @@ class UsageMonitorService : Service() {
         packageManagerHelper = packageManager
 
         createNotificationChannels()
+        overlayManager = CuraOverlayManager(this)
 
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)
@@ -87,6 +90,10 @@ class UsageMonitorService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         isRunning = true
         startForeground(NOTIFICATION_ID_MONITOR, buildMonitorNotification("監視待機中...", 0L))
+
+        if (overlayManager.canDrawOverlay()) {
+            overlayManager.showOverlay()
+        }
 
         serviceScope.launch {
             var lastQueryTime = System.currentTimeMillis() - 10_000L
@@ -103,6 +110,13 @@ class UsageMonitorService : Service() {
 
                 updateMonitorNotification()
                 broadcastState()
+
+                val session = tracker.getCurrentSession()
+                overlayManager.updateState(
+                    session?.appName ?: "待機中",
+                    session?.continuousDurationMs ?: 0L,
+                    session?.isBufferActive ?: false
+                )
 
                 delay(3000L) // 3秒間隔でポーリング
             }
@@ -236,6 +250,7 @@ class UsageMonitorService : Service() {
     override fun onDestroy() {
         isRunning = false
         serviceJob.cancel()
+        overlayManager.removeOverlay()
         try {
             unregisterReceiver(screenReceiver)
         } catch (_: Exception) {}

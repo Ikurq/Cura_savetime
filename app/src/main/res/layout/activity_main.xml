@@ -77,6 +77,45 @@
             android:textSize="12sp" />
     </LinearLayout>
 
+    <!-- Overlay Permission Banner (Side Sense Cura) -->
+    <LinearLayout
+        android:id="@+id/layoutOverlayPermissionBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:background="@drawable/bg_tactical_card"
+        android:orientation="vertical"
+        android:padding="14dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:text=":: OVERLAY_PERMISSION_REQUIRED"
+            android:textColor="@color/accent_cyan"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="画面端から覗き込むCura（サイドセンス風オーバーレイ）と5分周期の吹き出しを表示するために「他のアプリの上に重ねて表示」権限を許可してください。"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btnGrantOverlayPermission"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginTop="8dp"
+            android:backgroundTint="@color/accent_cyan"
+            android:text="重ねて表示を許可する"
+            android:textColor="@color/bg_void"
+            android:textSize="12sp" />
+    </LinearLayout>
+
     <!-- Active App Continuous Usage Card -->
     <LinearLayout
         android:layout_width="match_parent"
