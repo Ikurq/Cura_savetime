@@ -136,10 +136,10 @@ class UsageMonitorService : Service() {
             while (isActive) {
                 val now = System.currentTimeMillis()
 
-                // アクセシビリティイベントが直近10秒以内に来ていない場合のみ UsageStatsManager でポーリング補完
-                val timeSinceAccessibility = now - lastAccessibilityEventTime
-                if (timeSinceAccessibility > 10_000L) {
-                    pollUsageEvents(lastQueryTime, now)
+                // ユーザー補助サービス未接続時、または現在セッションが空の時は UsageStatsManager で補完
+                if (!AppDetectorAccessibilityService.isServiceConnected || tracker.getCurrentSession() == null) {
+                    val lookbackStart = if (tracker.getCurrentSession() == null) now - 60_000L else lastQueryTime
+                    pollUsageEvents(lookbackStart, now)
                 }
                 lastQueryTime = now
 
@@ -191,6 +191,15 @@ class UsageMonitorService : Service() {
             val pkg = event.packageName ?: continue
             val time = event.timeStamp
 
+            // システムUIやキーボード、自身のアプリによる一時イベントは無視
+            if (pkg == packageName ||
+                pkg.contains("systemui", ignoreCase = true) ||
+                pkg.contains("inputmethod", ignoreCase = true) ||
+                pkg.contains("keyboard", ignoreCase = true)
+            ) {
+                continue
+            }
+
             when (event.eventType) {
                 UsageEvents.Event.ACTIVITY_RESUMED,
                 UsageEvents.Event.MOVE_TO_FOREGROUND -> {
@@ -199,10 +208,6 @@ class UsageMonitorService : Service() {
                     if (alert != null) {
                         showThresholdAlertNotification(alert)
                     }
-                }
-                UsageEvents.Event.ACTIVITY_PAUSED,
-                UsageEvents.Event.MOVE_TO_BACKGROUND -> {
-                    tracker.onAppBackground(pkg, time)
                 }
             }
         }

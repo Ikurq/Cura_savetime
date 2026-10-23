@@ -17,12 +17,28 @@ class AppDetectorAccessibilityService : AccessibilityService() {
         var isServiceConnected: Boolean = false
             private set
 
+        // アプリではなくシステムUIやキーボードなど一時的に重なるだけのパッケージ（現在のアプリ計測を中断させない）
+        private val TRANSIENT_SYSTEM_PACKAGES = setOf(
+            "com.android.systemui",
+            "com.google.android.inputmethod.latin",
+            "com.google.android.inputmethod.japanese",
+            "jp.co.omronsoft.openwnn",
+            "jp.co.sony.tablet.inputmethod",
+            "com.sonymobile.pobox",
+            "com.samsung.android.honeyboard",
+            "com.android.permissioncontroller",
+            "com.google.android.permissioncontroller",
+            "com.miui.securitycenter",
+            "android"
+        )
+
         /**
          * ユーザー補助サービスが有効になっているかを判定するユーティリティ
          */
         fun isAccessibilitySettingsOn(context: Context): Boolean {
+            if (isServiceConnected) return true
+
             var accessibilityEnabled = 0
-            val service = "${context.packageName}/${AppDetectorAccessibilityService::class.java.canonicalName}"
             try {
                 accessibilityEnabled = Settings.Secure.getInt(
                     context.contentResolver,
@@ -30,17 +46,19 @@ class AppDetectorAccessibilityService : AccessibilityService() {
                 )
             } catch (_: Exception) {
             }
-            val stringColonSplitter = TextUtils.SimpleStringSplitter(':')
             if (accessibilityEnabled == 1) {
                 val settingValue = Settings.Secure.getString(
                     context.contentResolver,
                     Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
                 )
                 if (settingValue != null) {
-                    stringColonSplitter.setString(settingValue)
-                    while (stringColonSplitter.hasNext()) {
-                        val accessibilityService = stringColonSplitter.next()
-                        if (accessibilityService.equals(service, ignoreCase = true)) {
+                    val splitter = TextUtils.SimpleStringSplitter(':')
+                    splitter.setString(settingValue)
+                    while (splitter.hasNext()) {
+                        val component = splitter.next()
+                        if (component.contains(context.packageName, ignoreCase = true) &&
+                            component.contains(AppDetectorAccessibilityService::class.java.simpleName, ignoreCase = true)
+                        ) {
                             return true
                         }
                     }
@@ -67,12 +85,17 @@ class AppDetectorAccessibilityService : AccessibilityService() {
 
         val packageName = event.packageName?.toString() ?: return
 
-        // 自身のアプリは無視
-        if (packageName == this.packageName) {
+        // 自身のアプリや、通知バー・キーボード等の一時的なシステムオーバーレイは無視（現在のアプリ計測を止めない）
+        if (packageName == this.packageName || TRANSIENT_SYSTEM_PACKAGES.contains(packageName)) {
+            return
+        }
+        if (packageName.contains("inputmethod", ignoreCase = true) ||
+            packageName.contains("keyboard", ignoreCase = true) ||
+            packageName.contains("systemui", ignoreCase = true)
+        ) {
             return
         }
 
-        // デフォルトランチャー（ホーム画面）の更新
         if (defaultLauncherPackage == null) {
             resolveDefaultLauncher()
         }
@@ -81,7 +104,12 @@ class AppDetectorAccessibilityService : AccessibilityService() {
         val timestamp = System.currentTimeMillis()
 
         // UsageMonitorServiceにリアルタイム通知
-        UsageMonitorService.notifyAppForeground(packageName, appName, timestamp, isLauncher = (packageName == defaultLauncherPackage))
+        UsageMonitorService.notifyAppForeground(
+            packageName = packageName,
+            appName = appName,
+            timestampMs = timestamp,
+            isLauncher = (packageName == defaultLauncherPackage)
+        )
     }
 
     override fun onInterrupt() {

@@ -281,7 +281,14 @@ class MainActivity : AppCompatActivity() {
         } else if (session != null && session.isBufferActive) {
             binding.tvActiveAppName.text = "${session.appName} (一時中断)"
             binding.btnExcludeCurrentApp.visibility = View.VISIBLE
-            binding.tvBufferStatus.text = "[ バッファ猶予中 / 画面合計: $screenContinuityStr ]"
+
+            val totalSec = session.continuousDurationMs / 1000L
+            val hours = totalSec / 3600
+            val minutes = (totalSec % 3600) / 60
+            val seconds = totalSec % 60
+            binding.tvContinuousTimer.text = String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
+
+            binding.tvBufferStatus.text = "[ 一時中断中 / 画面合計: $screenContinuityStr ]"
             binding.tvBufferStatus.setTextColor(ContextCompat.getColor(this, R.color.accent_cyan))
         } else {
             binding.tvActiveAppName.text = getString(R.string.no_active_session)

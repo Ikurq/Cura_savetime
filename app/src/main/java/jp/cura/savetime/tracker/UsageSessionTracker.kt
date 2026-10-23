@@ -135,7 +135,7 @@ class UsageSessionTracker(
         isScreenOff = false
 
         if (ignoredPackages.contains(packageName)) {
-            // 除外アプリ（ランチャーやユーザー設定除外）に移行した場合は前アプリを一時中断にする
+            // 除外アプリ（ランチャーやユーザー設定除外）に移行した場合は直前のアプリを一時中断状態として保持する
             val previousPkg = currentActivePackage
             if (previousPkg != null) {
                 finalizeTopTimelineEntry(timestampMs)
@@ -145,7 +145,6 @@ class UsageSessionTracker(
                     prevSession.bufferStartedAtMs = timestampMs
                 }
             }
-            currentActivePackage = null
             return null
         }
 
