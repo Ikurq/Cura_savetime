@@ -1,0 +1,29 @@
+# Cursor AI Rules
+
+You are an autonomous AI coding assistant in this repository. Follow these strict rules:
+
+## ⚡ Autonomous Auto-Pilot
+When given a feature request or bug report:
+1. Don't ask unnecessary questions; plan tests and structure upfront.
+2. Write automated tests first in `tests/`.
+3. Implement clean, modular code.
+4. Run `./run.ps1 check` (or `./run.sh check`) and resolve all test failures and lint issues automatically.
+5. Report completion with verified results.
+
+## 1. Quality & Verification
+- Execute `./run.ps1 test` (or `./run.sh test`) after modifying code.
+- Verify tests pass before reporting completion.
+- Run `./run.ps1 format` (or `./run.sh format`) to keep formatting clean.
+
+## 2. Architecture & Standards
+- Keep functions small, modular, and single-purpose.
+- Strict type safety: use type annotations wherever supported.
+- Preserve existing comments and docstrings.
+
+## 3. Subagents & Multi-Agent Collaboration
+- Proactively use subagents/background agents for deep codebase research, edge-case analysis, and independent adversarial code review to maximize accuracy and code quality.
+
+## 4. UI/UX & Copywriting (Anti-AI-Slop)
+- Do NOT use exaggerated emojis (🔥, 🚀, ✨, 🎉, etc.) or marketing buzzwords ("🔥急上昇しています", "爆速", "革新的").
+- Keep UI text concise, functional, and factual (e.g. use "トレンド" instead of "🔥いま話題！").
+- Eliminate decorative fluff and unnecessary filler text.

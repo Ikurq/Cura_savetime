@@ -1,0 +1,17 @@
+{
+  "name": "cura-savetime",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.8.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}
