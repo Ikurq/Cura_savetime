@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.CuraSaveTime" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="android:statusBarColor">@color/bg_void</item>
+        <item name="android:navigationBarColor">@color/bg_void</item>
+        <item name="android:windowBackground">@color/bg_void</item>
+        <item name="colorPrimary">@color/accent_crimson</item>
+        <item name="colorSecondary">@color/accent_cyan</item>
+    </style>
+</resources>

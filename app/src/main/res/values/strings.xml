@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">Cura SaveTime</string>
+    <string name="hud_header">CURA_OS // TIME_DEFENSE_MONITOR v1.0</string>
+    <string name="permission_required_title">:: USAGE_ACCESS_REQUIRED</string>
+    <string name="permission_required_desc">連続使用時間を正確に計測するため、「使用状況へのアクセス」権限が必要です。</string>
+    <string name="grant_permission">権限を許可する</string>
+    <string name="service_toggle_title">:: MONITOR_DAEMON</string>
+    <string name="active_app_title">:: ACTIVE_APP_CONTINUOUS</string>
+    <string name="worst_ranking_title">:: WORST_CONTINUOUS_RANKING</string>
+    <string name="no_active_session">アプリ待機中</string>
+    <string name="no_records">計測データなし</string>
+</resources>
