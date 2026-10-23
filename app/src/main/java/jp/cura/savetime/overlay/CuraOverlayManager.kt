@@ -2,16 +2,20 @@ package jp.cura.savetime.overlay
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Typeface
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -20,12 +24,14 @@ import androidx.core.content.ContextCompat
 import jp.cura.savetime.R
 import jp.cura.savetime.limiter.FlexibleUsageLimitManager
 import jp.cura.savetime.util.CuraMessageCatalog
+import java.util.Locale
 import kotlin.math.abs
 
 /**
  * 画面端からCuraが覗き込む常駐オーバーレイマネージャー
  * - アプリ別 5分ごと / 画面全体 5分ごとのメッセージ枠表示
  * - ゲーム・指定アプリでの「半透明＋当たり判定なし（FLAG_NOT_TOUCHABLE）」モード切り替え
+ * - 吹き出し内の行動ボタン押下による「30秒フルスクリーン画面ブロック」機能
  */
 class CuraOverlayManager(private val context: Context) {
 
@@ -44,8 +50,25 @@ class CuraOverlayManager(private val context: Context) {
     private var tvBalloonBudgetRemaining: TextView? = null
     private var tvBalloonRuleTag: TextView? = null
     private var tvBalloonAlertWarning: TextView? = null
+    private var btnBalloonBlock30s: Button? = null
     private var layoutSideHandle: FrameLayout? = null
     private var ivCuraPeeking: ImageView? = null
+
+    // 30秒フルスクリーンブロック用オーバーレイ
+    private var blockerView: View? = null
+    private var tvBlockerCountdown: TextView? = null
+    private var blockerRemainingSec: Int = 0
+    private val blockerTickRunnable = object : Runnable {
+        override fun run() {
+            blockerRemainingSec -= 1
+            if (blockerRemainingSec <= 0) {
+                stopThirtySecondBlock()
+            } else {
+                updateBlockerCountdownText()
+                mainHandler.postDelayed(this, 1000L)
+            }
+        }
+    }
 
     private var isBalloonVisible = false
     private var currentGhostMode = false
@@ -83,8 +106,13 @@ class CuraOverlayManager(private val context: Context) {
         tvBalloonBudgetRemaining = view.findViewById(R.id.tvBalloonBudgetRemaining)
         tvBalloonRuleTag = view.findViewById(R.id.tvBalloonRuleTag)
         tvBalloonAlertWarning = view.findViewById(R.id.tvBalloonAlertWarning)
+        btnBalloonBlock30s = view.findViewById(R.id.btnBalloonBlock30s)
         layoutSideHandle = view.findViewById(R.id.layoutSideHandle)
         ivCuraPeeking = view.findViewById(R.id.ivCuraPeeking)
+
+        btnBalloonBlock30s?.setOnClickListener {
+            startThirtySecondBlock(30)
+        }
 
         val layoutParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -173,6 +201,144 @@ class CuraOverlayManager(private val context: Context) {
     }
 
     /**
+     * 30秒間フルスクリーンで画面全体を覆い、あらゆるタッチ・戻る操作をブロックする
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    fun startThirtySecondBlock(durationSeconds: Int = 30) {
+        if (!canDrawOverlay()) return
+        hideBalloon()
+
+        if (blockerView != null) {
+            blockerRemainingSec = durationSeconds
+            updateBlockerCountdownText()
+            return
+        }
+
+        blockerRemainingSec = durationSeconds
+        val density = context.resources.displayMetrics.density
+
+        val container = object : LinearLayout(context) {
+            override fun dispatchKeyEvent(event: KeyEvent?): Boolean {
+                // 戻るキー等のキー操作も30秒間ブロック
+                return true
+            }
+        }.apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#F5080C10"))
+            setPadding((28 * density).toInt(), (32 * density).toInt(), (28 * density).toInt(), (32 * density).toInt())
+            isClickable = true
+            isFocusable = true
+            isFocusableInTouchMode = true
+            // 画面上のすべてのタッチイベントを吸収して背面へ一切通さない
+            setOnTouchListener { _, _ -> true }
+        }
+
+        val tagTv = TextView(context).apply {
+            text = ":: CURA // 30s_SCREEN_LOCK_ACTIVE"
+            setTextColor(ContextCompat.getColor(context, R.color.accent_cyan))
+            textSize = 12f
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            gravity = Gravity.CENTER
+        }
+
+        val charImage = ImageView(context).apply {
+            setImageResource(R.drawable.cura_peeking_chibi)
+            adjustViewBounds = true
+            layoutParams = LinearLayout.LayoutParams(
+                (150 * density).toInt(),
+                (150 * density).toInt()
+            ).apply {
+                topMargin = (20 * density).toInt()
+                bottomMargin = (16 * density).toInt()
+            }
+        }
+
+        val messageTv = TextView(context).apply {
+            text = "マスター、30秒だけスマホを置いて\nお目々を休めましょうっ！\n\n画面を伏せて深呼吸してくださいね。"
+            setTextColor(ContextCompat.getColor(context, R.color.text_primary))
+            textSize = 16f
+            gravity = Gravity.CENTER
+            setLineSpacing(6f * density, 1f)
+        }
+
+        val countdownTv = TextView(context).apply {
+            setTextColor(ContextCompat.getColor(context, R.color.accent_crimson))
+            textSize = 48f
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = (24 * density).toInt()
+                bottomMargin = (16 * density).toInt()
+            }
+        }
+        tvBlockerCountdown = countdownTv
+
+        val noteTv = TextView(context).apply {
+            text = "[ カウントが 00:00 になるまで画面操作はロックされています ]"
+            setTextColor(ContextCompat.getColor(context, R.color.accent_lime))
+            textSize = 11.5f
+            typeface = Typeface.MONOSPACE
+            gravity = Gravity.CENTER
+        }
+
+        container.addView(tagTv)
+        container.addView(charImage)
+        container.addView(messageTv)
+        container.addView(countdownTv)
+        container.addView(noteTv)
+
+        val blockerParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            } else {
+                @Suppress("DEPRECATION")
+                WindowManager.LayoutParams.TYPE_PHONE
+            },
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_FULLSCREEN or
+                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.CENTER
+        }
+
+        blockerView = container
+        updateBlockerCountdownText()
+
+        try {
+            windowManager.addView(container, blockerParams)
+            container.requestFocus()
+            mainHandler.removeCallbacks(blockerTickRunnable)
+            mainHandler.postDelayed(blockerTickRunnable, 1000L)
+        } catch (_: Exception) {
+            blockerView = null
+        }
+    }
+
+    private fun updateBlockerCountdownText() {
+        val sec = blockerRemainingSec.coerceAtLeast(0)
+        tvBlockerCountdown?.text = String.format(Locale.US, "00:%02d", sec)
+    }
+
+    fun stopThirtySecondBlock() {
+        mainHandler.removeCallbacks(blockerTickRunnable)
+        blockerView?.let {
+            try {
+                windowManager.removeView(it)
+            } catch (_: Exception) {}
+        }
+        blockerView = null
+        tvBlockerCountdown = null
+        blockerRemainingSec = 0
+    }
+
+    /**
      * ゲーム中や指定アプリ使用時に「半透明＋当たり判定なし（タッチ透過）」を切り替える
      */
     private fun applyGhostModeState(isGhost: Boolean) {
@@ -194,7 +360,8 @@ class CuraOverlayManager(private val context: Context) {
             } catch (_: Exception) {}
         }
 
-        // ゴーストモード時はキャラクターを35%半透明、5分通知吹き出しも72%半透明にして背面を透過
+        // ゴーストモード時はボタンを非表示にして背面を透過、通常時は行動ボタンを表示
+        btnBalloonBlock30s?.visibility = if (isGhost) View.GONE else View.VISIBLE
         ivCuraPeeking?.alpha = if (isGhost) 0.35f else 1.0f
         layoutBalloon?.alpha = if (isGhost) 0.72f else 0.96f
     }
@@ -203,7 +370,7 @@ class CuraOverlayManager(private val context: Context) {
         if (isBalloonVisible) {
             hideBalloon()
         } else {
-            showBalloon(autoHideSec = 6)
+            showBalloon(autoHideSec = 8)
         }
     }
 
@@ -306,14 +473,15 @@ class CuraOverlayManager(private val context: Context) {
                     )
                 }
                 tvBalloonDialogue?.text = messages.joinToString("\n")
-                // ゴーストモード（ゲーム中）でも当たり判定なし＆半透明のまま6秒間5分通知を表示する
-                showBalloon(autoHideSec = 6)
+                // ボタンを押す余裕があるよう10秒間表示（ゲーム透過時は6秒）
+                showBalloon(autoHideSec = if (isGhostMode) 6 else 10)
             }
         }
     }
 
     fun removeOverlay() {
         mainHandler.removeCallbacks(autoHideRunnable)
+        stopThirtySecondBlock()
         overlayView?.let {
             try {
                 windowManager.removeView(it)
