@@ -152,6 +152,13 @@ class MainActivity : AppCompatActivity() {
         }
 
         val session = UsageMonitorService.tracker.getCurrentSession()
+        val totalScreenMs = UsageMonitorService.tracker.getTotalContinuousScreenDurationMs()
+        val screenSec = totalScreenMs / 1000L
+        val screenHours = screenSec / 3600
+        val screenMin = (screenSec % 3600) / 60
+        val screenSeconds = screenSec % 60
+        val screenContinuityStr = String.format(Locale.US, "%02d:%02d:%02d", screenHours, screenMin, screenSeconds)
+
         if (session != null && !session.isBufferActive) {
             binding.tvActiveAppName.text = session.appName
 
@@ -161,16 +168,16 @@ class MainActivity : AppCompatActivity() {
             val seconds = totalSec % 60
             binding.tvContinuousTimer.text = String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
 
-            binding.tvBufferStatus.text = "[ 連続計測中 ]"
+            binding.tvBufferStatus.text = "[ 連続計測中 / 画面合計: $screenContinuityStr ]"
             binding.tvBufferStatus.setTextColor(ContextCompat.getColor(this, R.color.accent_crimson))
         } else if (session != null && session.isBufferActive) {
             binding.tvActiveAppName.text = "${session.appName} (一時中断)"
-            binding.tvBufferStatus.text = "[ バッファ猶予中 (60秒) ]"
+            binding.tvBufferStatus.text = "[ バッファ猶予中 / 画面合計: $screenContinuityStr ]"
             binding.tvBufferStatus.setTextColor(ContextCompat.getColor(this, R.color.accent_cyan))
         } else {
             binding.tvActiveAppName.text = getString(R.string.no_active_session)
             binding.tvContinuousTimer.text = "00:00:00"
-            binding.tvBufferStatus.text = "[ 待機中 ]"
+            binding.tvBufferStatus.text = if (totalScreenMs > 0) "[ 画面連続操作: $screenContinuityStr ]" else "[ 待機中 ]"
             binding.tvBufferStatus.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
         }
 

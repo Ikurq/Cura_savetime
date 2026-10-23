@@ -142,10 +142,12 @@ class UsageMonitorService : Service() {
                 broadcastState()
 
                 val session = tracker.getCurrentSession()
+                val totalScreenMs = tracker.getTotalContinuousScreenDurationMs(now)
                 overlayManager.updateState(
-                    session?.appName ?: "待機中",
-                    session?.continuousDurationMs ?: 0L,
-                    session?.isBufferActive ?: false
+                    appName = session?.appName ?: "待機中",
+                    continuousDurationMs = session?.continuousDurationMs ?: 0L,
+                    totalScreenDurationMs = totalScreenMs,
+                    isBuffer = session?.isBufferActive ?: false
                 )
 
                 delay(1000L) // 1秒間隔でUI/オーバーレイ更新
@@ -202,10 +204,15 @@ class UsageMonitorService : Service() {
 
     private fun updateMonitorNotification() {
         val session = tracker.getCurrentSession()
+        val totalScreenMs = tracker.getTotalContinuousScreenDurationMs()
+        val screenMinutes = totalScreenMs / (60 * 1000L)
+
         val text = if (session != null && !session.isBufferActive) {
             val minutes = session.continuousDurationMs / (60 * 1000L)
             val seconds = (session.continuousDurationMs / 1000L) % 60
-            "[${session.appName}] 連続 ${minutes}分 ${seconds}秒 使用中"
+            "[${session.appName}] ${minutes}m${seconds}s (画面連続: ${screenMinutes}分)"
+        } else if (screenMinutes > 0) {
+            "待機中 (画面連続操作: ${screenMinutes}分)"
         } else {
             "監視中: アプリ待機中"
         }

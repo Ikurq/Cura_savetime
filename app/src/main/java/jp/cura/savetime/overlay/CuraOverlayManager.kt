@@ -157,19 +157,24 @@ class CuraOverlayManager(private val context: Context) {
     /**
      * トラッカーからの状態更新を受け取り、吹き出し・5分周期通知を制御
      */
-    fun updateState(appName: String, continuousDurationMs: Long, isBuffer: Boolean) {
+    fun updateState(appName: String, continuousDurationMs: Long, totalScreenDurationMs: Long, isBuffer: Boolean) {
         mainHandler.post {
             if (overlayView == null) return@post
 
-            val minutes = continuousDurationMs / (60 * 1000L)
-            val seconds = (continuousDurationMs / 1000L) % 60
+            val appMinutes = continuousDurationMs / (60 * 1000L)
+            val appSeconds = (continuousDurationMs / 1000L) % 60
+            val screenMinutes = totalScreenDurationMs / (60 * 1000L)
+            val screenSeconds = (totalScreenDurationMs / 1000L) % 60
+
             val activeRule = limitManager.getActiveRule()
-            val remainingBudget = limitManager.calculateRemainingHourlyBudget(minutes)
-            val isExceeded = limitManager.isContinuousLimitExceeded(minutes)
+            // アプリ単体または画面連続時間の大きい方で予算と制限を判定
+            val effectiveMinutes = maxOf(appMinutes, screenMinutes)
+            val remainingBudget = limitManager.calculateRemainingHourlyBudget(effectiveMinutes)
+            val isExceeded = limitManager.isContinuousLimitExceeded(effectiveMinutes)
 
             tvBalloonAppName?.text = appName
             tvBalloonRuleTag?.text = "[${activeRule.name}]"
-            tvBalloonContinuousDuration?.text = "連続 ${minutes}分 ${seconds}秒"
+            tvBalloonContinuousDuration?.text = "アプリ: ${appMinutes}分${appSeconds}秒\n画面連続: ${screenMinutes}分${screenSeconds}秒"
             tvBalloonBudgetRemaining?.text = "1時間の残枠: ${remainingBudget}分"
 
             if (isExceeded) {
@@ -181,8 +186,8 @@ class CuraOverlayManager(private val context: Context) {
                 tvBalloonContinuousDuration?.setTextColor(ContextCompat.getColor(context, R.color.accent_lime))
             }
 
-            // 5分ごとの定期通知チェック（5分, 10分, 15分...）
-            if (limitManager.shouldTriggerFiveMinuteReminder(minutes)) {
+            // 5分ごとの定期通知チェック（画面連続時間が5分, 10分, 15分...）
+            if (limitManager.shouldTriggerFiveMinuteReminder(effectiveMinutes)) {
                 showBalloon(autoHideSec = 5) // 5秒後に自動消滅する控えめな吹き出し
             }
         }

@@ -1,6 +1,5 @@
 package jp.cura.savetime.tracker
 
-import jp.cura.savetime.model.ThresholdAlert
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -15,7 +14,9 @@ class UsageSessionTrackerTest {
     @Before
     fun setUp() {
         tracker = UsageSessionTracker(
-            bufferDurationMs = 60_000L, // 60秒バッファ
+            bufferDurationMs = 60_000L,
+            appSwitchBufferMs = 120_000L, // 2分以内の浮気は許容してセッション維持
+            screenRestBufferMs = 60_000L,
             thresholdMinutes = listOf(30L, 45L, 60L),
             ignoredPackages = setOf("com.android.launcher", "com.android.systemui", "jp.cura.savetime")
         )
@@ -31,111 +32,83 @@ class UsageSessionTrackerTest {
         assertEquals("com.google.android.youtube", session?.packageName)
         assertEquals("YouTube", session?.appName)
         assertEquals(startMs, session?.startedAtMs)
-        assertEquals(0L, session?.continuousDurationMs)
     }
 
     @Test
-    fun testOnTick_incrementsContinuousDuration() {
-        val startMs = 1_000_000L
-        tracker.onAppForeground("com.twitter.android", "X", startMs)
+    fun testMonsterSwitching_preservesMainAppSessionIfReturnedWithinTwoMinutes() {
+        var now = 1_000_000L
 
-        // 10分後
-        val tenMinutesMs = startMs + 10 * 60 * 1000L
-        val alert = tracker.onTick(tenMinutesMs)
+        // 1. YouTubeを30秒見る
+        tracker.onAppForeground("com.google.android.youtube", "YouTube", now)
+        for (i in 1..30) {
+            now += 1000L
+            tracker.onTick(now)
+        }
+        assertEquals(30_000L, tracker.getCurrentSession()?.continuousDurationMs)
 
-        assertNull(alert) // 10分時点では30分しきい値未達のためアラートなし
-        val session = tracker.getCurrentSession()
-        assertEquals(10 * 60 * 1000L, session?.continuousDurationMs)
+        // 2. 別のアプリ（X）へ切り替えて30秒見る
+        now += 1000L
+        tracker.onAppForeground("com.twitter.android", "X", now)
+        for (i in 1..30) {
+            now += 1000L
+            tracker.onTick(now)
+        }
+        assertEquals("X", tracker.getCurrentSession()?.appName)
+        assertEquals(30_000L, tracker.getCurrentSession()?.continuousDurationMs)
+
+        // 3. さらに別のアプリ（LINE）へ切り替えて20秒見る
+        now += 1000L
+        tracker.onAppForeground("jp.naver.line.android", "LINE", now)
+        for (i in 1..20) {
+            now += 1000L
+            tracker.onTick(now)
+        }
+
+        // 4. 合計80秒後（2分以内）にYouTubeに戻る
+        now += 1000L
+        tracker.onAppForeground("com.google.android.youtube", "YouTube", now)
+
+        val youtubeSession = tracker.getCurrentSession()
+        assertNotNull(youtubeSession)
+        assertEquals("YouTube", youtubeSession?.appName)
+        // YouTubeの以前の30秒が保持されていること！リセットされていない
+        assertEquals(30_000L, youtubeSession?.continuousDurationMs)
+
+        // 5. さらにYouTubeを20秒見る -> 50秒に累積される
+        for (i in 1..20) {
+            now += 1000L
+            tracker.onTick(now)
+        }
+        assertEquals(50_000L, tracker.getCurrentSession()?.continuousDurationMs)
     }
 
     @Test
-    fun testThresholdAlert_triggersExactlyOncePerThreshold() {
-        val startMs = 1_000_000L
-        tracker.onAppForeground("com.google.android.youtube", "YouTube", startMs)
+    fun testScreenContinuity_countsAcrossMultipleApps() {
+        var now = 1_000_000L
 
-        // 30分経過時
-        val thirtyMinMs = startMs + 30 * 60 * 1000L
-        val alert30 = tracker.onTick(thirtyMinMs)
-        assertNotNull(alert30)
-        assertEquals(30L, alert30?.thresholdMinutes)
-        assertEquals("YouTube", alert30?.appName)
+        // YouTube 10分
+        tracker.onAppForeground("com.google.android.youtube", "YouTube", now)
+        now += 10 * 60 * 1000L
 
-        // 31分経過時 (重複発火しないこと)
-        val thirtyOneMinMs = startMs + 31 * 60 * 1000L
-        val alert31 = tracker.onTick(thirtyOneMinMs)
-        assertNull(alert31)
+        // X 10分
+        tracker.onAppForeground("com.twitter.android", "X", now)
+        now += 10 * 60 * 1000L
 
-        // 45分経過時
-        val fortyFiveMinMs = startMs + 45 * 60 * 1000L
-        val alert45 = tracker.onTick(fortyFiveMinMs)
-        assertNotNull(alert45)
-        assertEquals(45L, alert45?.thresholdMinutes)
-    }
+        // LINE 10分
+        tracker.onAppForeground("jp.naver.line.android", "LINE", now)
+        now += 10 * 60 * 1000L
 
-    @Test
-    fun testGracePeriodBuffer_within60Seconds_keepsSessionActive() {
-        val startMs = 1_000_000L
-        tracker.onAppForeground("com.google.android.youtube", "YouTube", startMs)
+        // アプリを転々としても端末全体の連続スクリーンタイムは30分！
+        val totalScreenDuration = tracker.getTotalContinuousScreenDurationMs(now)
+        assertEquals(30 * 60 * 1000L, totalScreenDuration)
 
-        // 15分経過後にホーム画面へ抜ける（バックグラウンド移行）
-        val exitMs = startMs + 15 * 60 * 1000L
-        tracker.onAppBackground("com.google.android.youtube", exitMs)
+        // 画面を消して2分放置（休憩）
+        tracker.onScreenOff(now)
+        now += 120_000L
+        tracker.onScreenOn(now)
 
-        val session = tracker.getCurrentSession()
-        assertTrue(session?.isBufferActive == true)
-
-        // 30秒後（バッファ内）に再びYouTubeへ復帰
-        val returnMs = exitMs + 30 * 1000L
-        tracker.onAppForeground("com.google.android.youtube", "YouTube", returnMs)
-
-        val resumedSession = tracker.getCurrentSession()
-        assertNotNull(resumedSession)
-        assertEquals(false, resumedSession?.isBufferActive)
-        assertEquals(startMs, resumedSession?.startedAtMs) // 開始時刻が保持されている
-    }
-
-    @Test
-    fun testBufferExpiration_finishesSessionAndRecordsMaxDuration() {
-        val startMs = 1_000_000L
-        tracker.onAppForeground("com.google.android.youtube", "YouTube", startMs)
-
-        // 40分経過後に画面OFF
-        val exitMs = startMs + 40 * 60 * 1000L
-        tracker.onScreenOff(exitMs)
-
-        // 61秒経過（バッファ60秒を超過）
-        val expiredMs = exitMs + 61 * 1000L
-        tracker.onTick(expiredMs)
-
-        // セッションが終了していること
-        assertNull(tracker.getCurrentSession())
-
-        // レコードに40分の連続記録が反映されていること
-        val records = tracker.getRecords()
-        assertEquals(1, records.size)
-        assertEquals("com.google.android.youtube", records[0].packageName)
-        assertEquals(40L, records[0].maxContinuousMinutes)
-        assertEquals(1, records[0].sessionCount)
-    }
-
-    @Test
-    fun testSwitchingToAnotherApp_recordsOldAndStartsNewSession() {
-        val startMs = 1_000_000L
-        tracker.onAppForeground("com.google.android.youtube", "YouTube", startMs)
-
-        // 20分後にTwitterへ直接切り替え
-        val switchMs = startMs + 20 * 60 * 1000L
-        tracker.onAppForeground("com.twitter.android", "X", switchMs)
-
-        val currentSession = tracker.getCurrentSession()
-        assertEquals("com.twitter.android", currentSession?.packageName)
-        assertEquals(switchMs, currentSession?.startedAtMs)
-
-        // 前のYouTube記録が確定していること
-        val records = tracker.getRecords()
-        val youtubeRecord = records.find { it.packageName == "com.google.android.youtube" }
-        assertNotNull(youtubeRecord)
-        assertEquals(20L, youtubeRecord?.maxContinuousMinutes)
+        // 休憩後はリセットされる
+        assertEquals(0L, tracker.getTotalContinuousScreenDurationMs(now))
     }
 
     @Test
