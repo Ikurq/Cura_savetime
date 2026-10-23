@@ -115,9 +115,13 @@ class MainActivity : AppCompatActivity() {
                     startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
                     return@setOnCheckedChangeListener
                 }
-                startMonitorService()
+                if (!UsageMonitorService.isRunning) {
+                    startMonitorService()
+                }
             } else {
-                stopMonitorService()
+                if (UsageMonitorService.isRunning) {
+                    stopMonitorService()
+                }
             }
         }
 

@@ -91,6 +91,7 @@ class UsageMonitorService : Service() {
 
     private val serviceJob = Job()
     private val serviceScope = CoroutineScope(Dispatchers.Default + serviceJob)
+    private var monitorLoopJob: Job? = null
     private var usageStatsManager: UsageStatsManager? = null
     private lateinit var notificationManager: NotificationManager
     private lateinit var packageManagerHelper: PackageManager
@@ -134,7 +135,12 @@ class UsageMonitorService : Service() {
             overlayManager.showOverlay()
         }
 
-        serviceScope.launch {
+        // 既に監視ループが稼働中であれば多重起動しない（タイマー倍速化の防止）
+        if (monitorLoopJob?.isActive == true) {
+            return START_STICKY
+        }
+
+        monitorLoopJob = serviceScope.launch {
             val initNow = System.currentTimeMillis()
             // 初回起動時は当日00:00:00（86,400秒軸の先頭）からのイベント履歴をバックフィルしてグラフに反映
             backfillDayTimelineFromUsageStats(initNow)

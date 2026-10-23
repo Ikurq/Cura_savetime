@@ -282,8 +282,12 @@ class UsageSessionTracker(
         if (currentPkg != null) {
             val session = activeSessions[currentPkg]
             if (session != null && !session.isBufferActive) {
-                session.continuousDurationMs += 1000L
-                session.lastActiveAtMs = timestampMs
+                val rawDeltaMs = timestampMs - session.lastActiveAtMs
+                if (rawDeltaMs > 0L) {
+                    val deltaMs = rawDeltaMs.coerceAtMost(2_500L)
+                    session.continuousDurationMs += deltaMs
+                    session.lastActiveAtMs = timestampMs
+                }
 
                 // タイムライン先頭が現在オープンかつアクティブなアプリなら滞在秒数をリアルタイム更新
                 if (isTimelineTopEntryOpen && timelineEntries.isNotEmpty() && timelineEntries[0].packageName == currentPkg) {

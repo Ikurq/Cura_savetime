@@ -133,4 +133,17 @@ class UsageSessionTrackerTest {
         assertEquals(15L, timeline[0].durationSeconds)
         assertEquals(20L, timeline[1].durationSeconds)
     }
+
+    @Test
+    fun testDuplicateTicksWithinSameSecond_doNotAccelerateAppTimer() {
+        var now = 1_000_000L
+        tracker.onAppForeground("com.google.android.youtube", "YouTube", now)
+
+        // 1秒（1000ms）の間に5回 onTick が呼ばれても、実経過時間の1000msしか加算されないこと
+        for (i in 1..5) {
+            now += 200L
+            tracker.onTick(now)
+        }
+        assertEquals(1_000L, tracker.getCurrentSession()?.continuousDurationMs)
+    }
 }
