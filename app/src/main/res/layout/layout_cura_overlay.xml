@@ -2,7 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
-    android:gravity="center_vertical|end"
+    android:gravity="top|end"
     android:orientation="horizontal">
 
     <!-- Speech Balloon (Toggled on tap or auto-triggered every 5m) -->
@@ -107,7 +107,7 @@
             android:id="@+id/ivCuraPeeking"
             android:layout_width="wrap_content"
             android:layout_height="115dp"
-            android:layout_gravity="end|center_vertical"
+            android:layout_gravity="end|top"
             android:adjustViewBounds="true"
             android:contentDescription="Cura"
             android:scaleType="fitEnd"

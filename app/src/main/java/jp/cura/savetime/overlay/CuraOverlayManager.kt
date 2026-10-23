@@ -111,33 +111,52 @@ class CuraOverlayManager(private val context: Context) {
 
     @SuppressLint("ClickableViewAccessibility")
     private fun setupTouchHandling(rootView: View, layoutParams: WindowManager.LayoutParams) {
-        var initialY = 0
+        val density = context.resources.displayMetrics.density
+        // タップ時の誤移動を防ぐための遊び（デッドゾーン）と長押し猶予
+        val holdDragThresholdPx = 26f * density   // 250ms以上押下時は 26dp 以上の移動でドラッグ開始
+        val quickDragThresholdPx = 44f * density  // 短時間でも 44dp 以上大きくスライドした場合はドラッグ開始
+        val dragGraceTimeMs = 250L
+
+        var downTimeMs = 0L
         var initialTouchY = 0f
+        var dragOriginTouchY = 0f
+        var dragOriginWindowY = 0
         var isDragging = false
 
         layoutSideHandle?.setOnTouchListener { _, event ->
             if (currentGhostMode) return@setOnTouchListener false
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    initialY = layoutParams.y
+                    downTimeMs = event.downTime
                     initialTouchY = event.rawY
+                    dragOriginTouchY = event.rawY
+                    dragOriginWindowY = layoutParams.y
                     isDragging = false
-                    ivCuraPeeking?.animate()?.scaleX(0.92f)?.scaleY(0.92f)?.setDuration(80)?.start()
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    val deltaY = (event.rawY - initialTouchY).toInt()
-                    if (abs(deltaY) > 15) {
-                        isDragging = true
-                        layoutParams.y = initialY + deltaY
+                    val totalDeltaY = event.rawY - initialTouchY
+                    val heldMs = event.eventTime - downTimeMs
+
+                    if (!isDragging) {
+                        val passedGraceHold = heldMs >= dragGraceTimeMs && abs(totalDeltaY) >= holdDragThresholdPx
+                        val passedLargeSlide = abs(totalDeltaY) >= quickDragThresholdPx
+                        if (passedGraceHold || passedLargeSlide) {
+                            isDragging = true
+                            // ドラッグ開始時点の座標を基準にすることで、閾値突破時のカクつきジャンプを防止
+                            dragOriginTouchY = event.rawY
+                            dragOriginWindowY = layoutParams.y
+                        }
+                    } else {
+                        val moveDeltaY = (event.rawY - dragOriginTouchY).toInt()
+                        layoutParams.y = dragOriginWindowY + moveDeltaY
                         windowManager.updateViewLayout(rootView, layoutParams)
                     }
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    ivCuraPeeking?.animate()?.scaleX(1.0f)?.scaleY(1.0f)?.setDuration(120)?.start()
                     if (!isDragging && event.action == MotionEvent.ACTION_UP) {
-                        // タップ時: タップ用メッセージを表示して吹き出し開閉
+                        // タップ時: タップ用メッセージを表示して吹き出し開閉（位置は一切動かさない）
                         tvBalloonDialogue?.text = messageCatalog.formatTapMessage(
                             appName = lastAppName,
                             appMinutes = lastAppMinutes,
