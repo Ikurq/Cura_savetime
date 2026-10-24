@@ -87,6 +87,9 @@ class UsageMonitorService : Service() {
 
         @Volatile
         var shouldReloadMessageCatalog = false
+
+        @Volatile
+        var shouldTriggerThirtySecondBlock = false
     }
 
     private val serviceJob = Job()
@@ -172,6 +175,10 @@ class UsageMonitorService : Service() {
                     shouldReloadMessageCatalog = false
                     overlayManager.reloadMessageCatalog()
                 }
+                if (shouldTriggerThirtySecondBlock) {
+                    shouldTriggerThirtySecondBlock = false
+                    mainHandlerPostBlock()
+                }
                 val isGhost = if (session != null && !session.isBufferActive) {
                     ghostAppsStore.isGhostModeApp(session.packageName)
                 } else {
@@ -191,6 +198,12 @@ class UsageMonitorService : Service() {
         }
 
         return START_STICKY
+    }
+
+    private fun mainHandlerPostBlock() {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            overlayManager.startThirtySecondBlock(30)
+        }
     }
 
     private fun detectAndRegisterDefaultLauncher() {

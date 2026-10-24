@@ -131,4 +131,28 @@ class TimelineGraphCalculatorTest {
         assertEquals("12:30:45", TimelineGraphCalculator.formatSecondOfDay(12 * 3600 + 30 * 60 + 45))
         assertEquals("24:00:00", TimelineGraphCalculator.formatSecondOfDay(86400))
     }
+
+    @Test
+    fun testFormatDurationClean_unifiesSingleReadableFormat() {
+        assertEquals("45秒", TimelineGraphCalculator.formatDurationClean(45L))
+        assertEquals("1分16秒", TimelineGraphCalculator.formatDurationClean(76L))
+        assertEquals("5分", TimelineGraphCalculator.formatDurationClean(300L))
+        assertEquals("1時間05分", TimelineGraphCalculator.formatDurationClean(3900L))
+    }
+
+    @Test
+    fun testPartitionTimelineLogs_separatesMicroSwitchesUnder5Seconds() {
+        val entries = listOf(
+            TimelineEntry("pkg.a", "AppA", 1000L, 2L),
+            TimelineEntry("pkg.b", "AppB", 5000L, 45L),
+            TimelineEntry("pkg.c", "AppC", 60000L, 4L),
+            TimelineEntry("pkg.d", "AppD", 70000L, 120L)
+        )
+        val (mainLogs, microLogs) = TimelineGraphCalculator.partitionTimelineLogs(entries, minDurationSeconds = 5L)
+        assertEquals(2, mainLogs.size)
+        assertEquals("AppB", mainLogs[0].appName)
+        assertEquals("AppD", mainLogs[1].appName)
+        assertEquals(2, microLogs.size)
+        assertEquals(6L, microLogs.sumOf { it.durationSeconds })
+    }
 }

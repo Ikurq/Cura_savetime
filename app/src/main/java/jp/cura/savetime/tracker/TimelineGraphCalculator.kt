@@ -205,4 +205,39 @@ object TimelineGraphCalculator {
         val m = (clamped % 3600) / 60
         return String.format(Locale.US, "%02d:%02d", h, m)
     }
+
+    /**
+     * 重複表記（例: "76秒 (1m16s)"）を排し、統一された単一フォーマット（"1分16秒" / "45秒"）に変換する
+     */
+    fun formatDurationClean(seconds: Long): String {
+        val clamped = seconds.coerceAtLeast(0L)
+        val hours = clamped / 3600L
+        val mins = (clamped % 3600L) / 60L
+        val secs = clamped % 60L
+        return when {
+            hours > 0L -> "${hours}時間${String.format(Locale.US, "%02d", mins)}分"
+            mins > 0L && secs > 0L -> "${mins}分${secs}秒"
+            mins > 0L -> "${mins}分"
+            else -> "${secs}秒"
+        }
+    }
+
+    /**
+     * タイムラインログを「5秒以上の主要ログ」と「5秒未満の極小切り替えログ」に分離する
+     */
+    fun partitionTimelineLogs(
+        entries: List<TimelineEntry>,
+        minDurationSeconds: Long = 5L
+    ): Pair<List<TimelineEntry>, List<TimelineEntry>> {
+        val mainLogs = mutableListOf<TimelineEntry>()
+        val microLogs = mutableListOf<TimelineEntry>()
+        for (entry in entries) {
+            if (entry.durationSeconds >= minDurationSeconds) {
+                mainLogs.add(entry)
+            } else {
+                microLogs.add(entry)
+            }
+        }
+        return mainLogs to microLogs
+    }
 }

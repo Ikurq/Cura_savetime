@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -17,7 +18,9 @@ import android.view.Gravity
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -26,6 +29,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import jp.cura.savetime.databinding.ActivityMainBinding
 import jp.cura.savetime.service.UsageMonitorService
+import jp.cura.savetime.tracker.TimelineEntry
+import jp.cura.savetime.tracker.TimelineGraphCalculator
 import jp.cura.savetime.util.AppNameResolver
 import jp.cura.savetime.util.AppUpdateManager
 import jp.cura.savetime.util.CuraMessageCatalog
@@ -43,6 +48,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var excludedAppsStore: ExcludedAppsStore
     private lateinit var ghostAppsStore: GhostAppsStore
+    private var currentTabIndex: Int = 0
+    private var isMicroLogExpanded: Boolean = false
 
     private val stateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -60,6 +67,7 @@ class MainActivity : AppCompatActivity() {
         UsageMonitorService.refreshIgnoredPackages(this)
         binding.switchAutoGameGhost.isChecked = ghostAppsStore.isAutoDetectGameCategoryEnabled()
         setupListeners()
+        switchTab(0)
         requestNotificationPermissionIfNeeded()
 
         // 初回起動時に使用状況アクセス権限があれば自動的に常駐サービスを開始
@@ -89,6 +97,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupListeners() {
+        binding.btnTabHome.setOnClickListener { switchTab(0) }
+        binding.btnTabLogs.setOnClickListener { switchTab(1) }
+        binding.btnTabSettings.setOnClickListener { switchTab(2) }
+
         binding.btnGrantPermission.setOnClickListener {
             startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
         }
@@ -128,8 +140,22 @@ class MainActivity : AppCompatActivity() {
         binding.btnExcludeCurrentApp.setOnClickListener {
             val session = UsageMonitorService.tracker.getCurrentSession()
             if (session != null) {
-                excludePackage(session.packageName, session.appName)
+                showAppActionSheet(session.packageName, session.appName)
             }
+        }
+
+        binding.btnHeroBlock30s.setOnClickListener {
+            triggerThirtySecondBlock()
+        }
+
+        binding.btnQuickBlock30s.setOnClickListener {
+            triggerThirtySecondBlock()
+        }
+
+        binding.tvMicroLogHeader.setOnClickListener {
+            isMicroLogExpanded = !isMicroLogExpanded
+            binding.layoutMicroLogList.visibility = if (isMicroLogExpanded) View.VISIBLE else View.GONE
+            renderTimelineList()
         }
 
         binding.btnAddExclusion.setOnClickListener {
@@ -140,18 +166,10 @@ class MainActivity : AppCompatActivity() {
             checkForAppUpdate()
         }
 
-        binding.btnZoom24h.setOnClickListener {
-            applyTimelineZoom(86_400)
-        }
-        binding.btnZoom6h.setOnClickListener {
-            applyTimelineZoom(21_600)
-        }
-        binding.btnZoom1h.setOnClickListener {
-            applyTimelineZoom(3_600)
-        }
-        binding.btnZoom15m.setOnClickListener {
-            applyTimelineZoom(900)
-        }
+        binding.btnZoom24h.setOnClickListener { applyTimelineZoom(86_400) }
+        binding.btnZoom6h.setOnClickListener { applyTimelineZoom(21_600) }
+        binding.btnZoom1h.setOnClickListener { applyTimelineZoom(3_600) }
+        binding.btnZoom15m.setOnClickListener { applyTimelineZoom(900) }
 
         binding.timelineGraphView.onInspectionChanged = { bar, inspectedSec ->
             updateInspectorText(bar, inspectedSec)
@@ -174,6 +192,89 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun switchTab(tabIndex: Int) {
+        currentTabIndex = tabIndex
+        binding.tabContainerHome.visibility = if (tabIndex == 0) View.VISIBLE else View.GONE
+        binding.tabContainerLogs.visibility = if (tabIndex == 1) View.VISIBLE else View.GONE
+        binding.tabContainerSettings.visibility = if (tabIndex == 2) View.VISIBLE else View.GONE
+
+        val activeText = ContextCompat.getColor(this, R.color.accent_cyan)
+        val inactiveText = ContextCompat.getColor(this, R.color.text_secondary)
+        val activeBg = ContextCompat.getColorStateList(this, R.color.bg_surface)
+        val inactiveBg = ContextCompat.getColorStateList(this, R.color.bg_panel)
+
+        binding.btnTabHome.setTextColor(if (tabIndex == 0) activeText else inactiveText)
+        binding.btnTabHome.backgroundTintList = if (tabIndex == 0) activeBg else inactiveBg
+
+        binding.btnTabLogs.setTextColor(if (tabIndex == 1) activeText else inactiveText)
+        binding.btnTabLogs.backgroundTintList = if (tabIndex == 1) activeBg else inactiveBg
+
+        binding.btnTabSettings.setTextColor(if (tabIndex == 2) activeText else inactiveText)
+        binding.btnTabSettings.backgroundTintList = if (tabIndex == 2) activeBg else inactiveBg
+
+        binding.mainScrollView.scrollTo(0, 0)
+    }
+
+    private fun triggerThirtySecondBlock() {
+        val canDraw = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            Settings.canDrawOverlays(this)
+        } else {
+            true
+        }
+        if (!canDraw) {
+            Toast.makeText(this, "「他のアプリの上に重ねて表示」権限を許可してください", Toast.LENGTH_SHORT).show()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                startActivity(
+                    Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:$packageName")
+                    )
+                )
+            }
+            return
+        }
+        if (!UsageMonitorService.isRunning && hasUsageStatsPermission()) {
+            startMonitorService()
+        }
+        UsageMonitorService.shouldTriggerThirtySecondBlock = true
+        Toast.makeText(this, "30秒間スマホロックを開始します", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun showAppActionSheet(pkg: String, appName: String) {
+        val isGhost = ghostAppsStore.getGhostPackages().contains(pkg)
+        val ghostActionText = if (isGhost) {
+            "ゲーム透過モードを解除する (現在: 透過中)"
+        } else {
+            "ゲーム透過モードに設定する (半透明・タッチ透過)"
+        }
+
+        val options = arrayOf(
+            ghostActionText,
+            "監視除外リストに追加する",
+            "今すぐ30秒間画面をブロックして休む"
+        )
+
+        AlertDialog.Builder(this)
+            .setTitle("$appName の操作")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> {
+                        if (isGhost) {
+                            ghostAppsStore.removeGhostPackage(pkg)
+                            Toast.makeText(this, "$appName の透過モードを解除しました", Toast.LENGTH_SHORT).show()
+                            updateUiState()
+                        } else {
+                            addGhostModePackage(pkg, appName)
+                        }
+                    }
+                    1 -> excludePackage(pkg, appName)
+                    2 -> triggerThirtySecondBlock()
+                }
+            }
+            .setNegativeButton("閉じる", null)
+            .show()
+    }
+
     private fun applyTimelineZoom(spanSeconds: Int) {
         binding.timelineGraphView.setZoomWindowSeconds(spanSeconds)
         val activeColor = ContextCompat.getColor(this, R.color.accent_cyan)
@@ -189,15 +290,16 @@ class MainActivity : AppCompatActivity() {
         inspectedSec: Int
     ) {
         if (bar != null) {
-            val startStr = jp.cura.savetime.tracker.TimelineGraphCalculator.formatSecondOfDay(bar.startSecondOfDay)
-            val endStr = jp.cura.savetime.tracker.TimelineGraphCalculator.formatSecondOfDay(bar.endSecondOfDay)
+            val startStr = TimelineGraphCalculator.formatSecondOfDay(bar.startSecondOfDay)
+            val endStr = TimelineGraphCalculator.formatSecondOfDay(bar.endSecondOfDay)
+            val cleanDur = TimelineGraphCalculator.formatDurationClean(bar.durationSeconds)
             binding.tvTimelineInspector.text =
-                "[$startStr-$endStr (${bar.startSecondOfDay}/86400s)] ${bar.appName} : ${bar.durationSeconds}秒"
+                "[$startStr-$endStr] ${bar.appName} : $cleanDur"
             binding.tvTimelineInspector.setTextColor(ContextCompat.getColor(this, R.color.accent_lime))
         } else {
-            val timeStr = jp.cura.savetime.tracker.TimelineGraphCalculator.formatSecondOfDay(inspectedSec)
+            val timeStr = TimelineGraphCalculator.formatSecondOfDay(inspectedSec)
             binding.tvTimelineInspector.text =
-                "[$timeStr ($inspectedSec/86400s)] 使用記録なし (0秒)"
+                "[$timeStr ($inspectedSec/86400s)] 使用記録なし"
             binding.tvTimelineInspector.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
         }
     }
@@ -333,7 +435,7 @@ class MainActivity : AppCompatActivity() {
             if (update != null) {
                 val isNewer = update.tagName != "v$currentVersion" && update.tagName != currentVersion
                 val notes = if (update.releaseNotes.isNotBlank()) "\n\n【更新内容】\n${update.releaseNotes.take(300)}" else ""
-                val statusMsg = if (isNewer) "新しいバージョンが利用可能です！" else "現在最新バージョンを使用中です。"
+                val statusMsg = if (isNewer) "新しいバージョンが利用可能です。" else "現在最新バージョンを使用中です。"
 
                 AlertDialog.Builder(this@MainActivity)
                     .setTitle("アップデート確認 (${update.tagName})")
@@ -418,79 +520,124 @@ class MainActivity : AppCompatActivity() {
         updateUiState()
     }
 
+    private fun formatHms(totalSec: Long): String {
+        val h = totalSec / 3600L
+        val m = (totalSec % 3600L) / 60L
+        val s = totalSec % 60L
+        return String.format(Locale.US, "%02d:%02d:%02d", h, m, s)
+    }
+
     private fun updateUiState() {
         val isRunning = UsageMonitorService.isRunning
-        binding.switchMonitorDaemon.isChecked = isRunning
+        if (binding.switchMonitorDaemon.isChecked != isRunning) {
+            binding.switchMonitorDaemon.isChecked = isRunning
+        }
 
         if (isRunning) {
-            binding.tvStatusBadge.text = "[ ACTIVE ]"
+            binding.tvStatusBadge.text = "● ACTIVE"
             binding.tvStatusBadge.setTextColor(ContextCompat.getColor(this, R.color.accent_lime))
         } else {
-            binding.tvStatusBadge.text = "[ STANDBY ]"
+            binding.tvStatusBadge.text = "○ STANDBY"
             binding.tvStatusBadge.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
         }
+
+        // First feed timeline data to graph so app summaries are up to date
+        val timeline = UsageMonitorService.tracker.getTimeline()
+        binding.timelineGraphView.setTimelineData(timeline)
 
         val session = UsageMonitorService.tracker.getCurrentSession()
         val totalScreenMs = UsageMonitorService.tracker.getTotalContinuousScreenDurationMs()
         val screenSec = totalScreenMs / 1000L
-        val screenHours = screenSec / 3600
-        val screenMin = (screenSec % 3600) / 60
-        val screenSeconds = screenSec % 60
-        val screenContinuityStr = String.format(Locale.US, "%02d:%02d:%02d", screenHours, screenMin, screenSeconds)
+        val screenContinuityStr = formatHms(screenSec)
+
+        // Calculate today's total usage time from 24h timeline + active session
+        val timelineTotalSec = binding.timelineGraphView.getAppSummaries().sumOf { it.totalSeconds.toLong() }
+        val todayTotalSec = maxOf(timelineTotalSec, screenSec)
+        binding.tvTodayTotalTimer.text = formatHms(todayTotalSec)
+
+        // Hourly budget progress (target: 30 min = 1800s per hour)
+        val budgetUsedSec = maxOf(screenSec, (session?.continuousDurationMs ?: 0L) / 1000L)
+        val budgetPct = ((budgetUsedSec * 100L) / 1800L).toInt().coerceIn(0, 100)
+        binding.progressHourlyGoal.progress = budgetPct
+        binding.tvGoalProgressLabel.text = "${budgetPct}% 使用済み"
+
+        val progressColorRes = when {
+            budgetPct >= 85 -> R.color.accent_crimson
+            budgetPct >= 60 -> R.color.accent_amber
+            else -> R.color.accent_lime
+        }
+        val progressColor = ContextCompat.getColor(this, progressColorRes)
+        binding.tvGoalProgressLabel.setTextColor(progressColor)
+        binding.progressHourlyGoal.progressTintList = ColorStateList.valueOf(progressColor)
 
         if (session != null && !session.isBufferActive) {
-            binding.tvActiveAppName.text = session.appName
+            binding.tvActiveAppName.text = "現在: ${session.appName}"
             binding.btnExcludeCurrentApp.visibility = View.VISIBLE
+            binding.btnExcludeCurrentApp.text = "設定"
 
-            val totalSec = session.continuousDurationMs / 1000L
-            val hours = totalSec / 3600
-            val minutes = (totalSec % 3600) / 60
-            val seconds = totalSec % 60
-            binding.tvContinuousTimer.text = String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
-
-            binding.tvBufferStatus.text = "[ 連続計測中 / 画面合計: $screenContinuityStr ]"
-            binding.tvBufferStatus.setTextColor(ContextCompat.getColor(this, R.color.accent_crimson))
+            val activeSec = session.continuousDurationMs / 1000L
+            binding.tvContinuousTimer.text = formatHms(activeSec)
+            binding.tvBufferStatus.text = "[ 計測中 // 連続 $screenContinuityStr ]"
+            binding.tvBufferStatus.setTextColor(ContextCompat.getColor(this, R.color.accent_lime))
         } else if (session != null && session.isBufferActive) {
-            binding.tvActiveAppName.text = "${session.appName} (一時中断)"
+            binding.tvActiveAppName.text = "現在: ${session.appName} (一時中断)"
             binding.btnExcludeCurrentApp.visibility = View.VISIBLE
+            binding.btnExcludeCurrentApp.text = "設定"
 
-            val totalSec = session.continuousDurationMs / 1000L
-            val hours = totalSec / 3600
-            val minutes = (totalSec % 3600) / 60
-            val seconds = totalSec % 60
-            binding.tvContinuousTimer.text = String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
-
-            binding.tvBufferStatus.text = "[ 一時中断中 / 画面合計: $screenContinuityStr ]"
+            val activeSec = session.continuousDurationMs / 1000L
+            binding.tvContinuousTimer.text = formatHms(activeSec)
+            binding.tvBufferStatus.text = "[ 中断中 // 連続 $screenContinuityStr ]"
             binding.tvBufferStatus.setTextColor(ContextCompat.getColor(this, R.color.accent_cyan))
         } else {
-            binding.tvActiveAppName.text = getString(R.string.no_active_session)
+            binding.tvActiveAppName.text = "現在: 待機中 (別アプリを開くと計測)"
             binding.btnExcludeCurrentApp.visibility = View.GONE
             binding.tvContinuousTimer.text = "00:00:00"
-            binding.tvBufferStatus.text = if (totalScreenMs > 0) "[ 画面連続操作: $screenContinuityStr ]" else "[ 待機中 ]"
+            binding.tvBufferStatus.text = if (screenSec > 0) "[ 連続操作 $screenContinuityStr ]" else "[ 監視待機中 ]"
             binding.tvBufferStatus.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
         }
 
+        updateHeroAssistantMessage(session?.appName, budgetUsedSec / 60L, todayTotalSec / 60L)
         renderTimelineList()
+        renderRankingList()
         renderExclusionsList()
         renderGhostAppsList()
-        renderRankingList()
+    }
+
+    private fun updateHeroAssistantMessage(activeAppName: String?, continuousMin: Long, todayTotalMin: Long) {
+        val topSummary = binding.timelineGraphView.getAppSummaries().firstOrNull()
+        val targetApp = activeAppName ?: topSummary?.appName ?: "スマホ"
+        val remainMin = (30L - continuousMin).coerceAtLeast(0L)
+
+        val message = when {
+            continuousMin >= 30L ->
+                "マスター、${targetApp}を${continuousMin}分続けて見てますよ！一度「30秒休む」を押して目を休めましょうっ！"
+            continuousMin >= 15L ->
+                "${targetApp}が${continuousMin}分経過です！残り枠はあと${remainMin}分ですよ。キリのいいところで一息つきましょうね。"
+            todayTotalMin >= 120L ->
+                "本日の累計利用は${todayTotalMin / 60}時間${todayTotalMin % 60}分です。${targetApp}の見すぎに気をつけて、こまめに休憩してくださいねっ。"
+            topSummary != null ->
+                "今日は「${topSummary.appName}」の利用が一番多いですよ（${TimelineGraphCalculator.formatDurationClean(topSummary.totalSeconds.toLong())}）。意識してペース配分しましょう！"
+            else ->
+                "マスター、今日もスマホの使いすぎに気をつけて一緒にがんばりましょうねっ！"
+        }
+        binding.tvHeroCuraMessage.text = message
     }
 
     private fun renderTimelineList() {
         binding.layoutTimelineList.removeAllViews()
+        binding.layoutMicroLogList.removeAllViews()
         binding.layoutTimelineLegend.removeAllViews()
         val timeline = UsageMonitorService.tracker.getTimeline()
 
-        binding.timelineGraphView.setTimelineData(timeline)
-
         if (timeline.isEmpty()) {
+            binding.layoutMicroLogAccordion.visibility = View.GONE
             binding.tvTimelineInspector.text = "グラフ待機中（横軸: 0〜86400秒 / 縦軸: 秒）"
             binding.tvTimelineInspector.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
             val emptyTv = TextView(this).apply {
-                text = "まだアプリ切り替え履歴がありません（別アプリを開くと即座に記録されます）"
+                text = "まだアプリ切り替え履歴がありません（別アプリを開くと記録されます）"
                 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
                 textSize = 12f
-                setPadding(0, 4, 0, 4)
+                setPadding(0, 6, 0, 6)
             }
             binding.layoutTimelineList.addView(emptyTv)
             return
@@ -501,7 +648,7 @@ class MainActivity : AppCompatActivity() {
             binding.timelineGraphView.getInspectedSecond()
         )
 
-        // アプリ別カラー凡例と当日累計秒数（上位6件を2列または横並びで表示）
+        // アプリ別カラー凡例と当日累計（上位6件を2列表示、表記は簡素化した時間表記）
         val summaries = binding.timelineGraphView.getAppSummaries().take(6)
         val palette = jp.cura.savetime.ui.TimelineGraphView.APP_COLOR_PALETTE
         summaries.chunked(2).forEach { pair ->
@@ -510,8 +657,9 @@ class MainActivity : AppCompatActivity() {
                 setPadding(0, 2, 0, 2)
             }
             for (summary in pair) {
+                val cleanDur = TimelineGraphCalculator.formatDurationClean(summary.totalSeconds.toLong())
                 val itemTv = TextView(this).apply {
-                    text = "■ ${summary.appName} (${summary.totalSeconds}s)"
+                    text = "■ ${summary.appName} ($cleanDur)"
                     setTextColor(palette[summary.colorIndex])
                     textSize = 10.5f
                     typeface = android.graphics.Typeface.MONOSPACE
@@ -522,89 +670,98 @@ class MainActivity : AppCompatActivity() {
             binding.layoutTimelineLegend.addView(legendRow)
         }
 
-        val timeFormatter = SimpleDateFormat("HH:mm:ss", Locale.JAPAN)
-        timeline.take(20).forEach { entry ->
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, 6, 0, 6)
-            }
+        // Partition logs into >= 5s (main) and < 5s (micro switches)
+        val (mainLogs, microLogs) = TimelineGraphCalculator.partitionTimelineLogs(timeline, minDurationSeconds = 5L)
 
-            val colorIdx = jp.cura.savetime.tracker.TimelineGraphCalculator.colorIndexForPackage(
-                entry.packageName,
-                palette.size
-            )
+        if (microLogs.isNotEmpty()) {
+            binding.layoutMicroLogAccordion.visibility = View.VISIBLE
+            val microTotalSec = microLogs.sumOf { it.durationSeconds }
+            val arrow = if (isMicroLogExpanded) "▾" else "▸"
+            binding.tvMicroLogHeader.text =
+                "$arrow その他の短時間切り替え（5秒未満：計 ${microLogs.size}回・${TimelineGraphCalculator.formatDurationClean(microTotalSec)}）"
+            binding.layoutMicroLogList.visibility = if (isMicroLogExpanded) View.VISIBLE else View.GONE
 
-            val timeTv = TextView(this).apply {
-                text = timeFormatter.format(Date(entry.timestampMs))
-                setTextColor(palette[colorIdx])
-                textSize = 11f
-                typeface = android.graphics.Typeface.MONOSPACE
-                layoutParams = LinearLayout.LayoutParams(150, LinearLayout.LayoutParams.WRAP_CONTENT)
-            }
-
-            val nameTv = TextView(this).apply {
-                text = entry.appName
-                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
-                textSize = 12f
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            }
-
-            val durationTv = TextView(this).apply {
-                val mins = entry.durationSeconds / 60
-                val secs = entry.durationSeconds % 60
-                text = if (mins > 0) "${entry.durationSeconds}秒 (${mins}m${secs}s)" else "${entry.durationSeconds}秒"
-                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent_lime))
-                textSize = 11f
-                typeface = android.graphics.Typeface.MONOSPACE
-                setPadding(8, 0, 12, 0)
-            }
-
-            val ghostBtn = Button(this).apply {
-                val isGhost = ghostAppsStore.getGhostPackages().contains(entry.packageName)
-                text = if (isGhost) "透過中" else "透過"
-                textSize = 9f
-                backgroundTintList = ContextCompat.getColorStateList(this@MainActivity, R.color.bg_surface)
-                setTextColor(
-                    ContextCompat.getColor(
-                        this@MainActivity,
-                        if (isGhost) R.color.accent_lime else R.color.accent_cyan
-                    )
-                )
-                layoutParams = LinearLayout.LayoutParams(105, 72).apply {
-                    marginEnd = 6
-                }
-                setPadding(0, 0, 0, 0)
-                setOnClickListener {
-                    if (isGhost) {
-                        ghostAppsStore.removeGhostPackage(entry.packageName)
-                        Toast.makeText(this@MainActivity, "${entry.appName} の透過モードを解除しました", Toast.LENGTH_SHORT).show()
-                        updateUiState()
-                    } else {
-                        addGhostModePackage(entry.packageName, entry.appName)
-                    }
+            if (isMicroLogExpanded) {
+                microLogs.take(25).forEach { entry ->
+                    binding.layoutMicroLogList.addView(createCleanLogRow(entry, palette, isCompact = true))
                 }
             }
-
-            val excludeBtn = Button(this).apply {
-                text = "除外"
-                textSize = 9f
-                backgroundTintList = ContextCompat.getColorStateList(this@MainActivity, R.color.bg_surface)
-                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent_amber))
-                layoutParams = LinearLayout.LayoutParams(105, 72)
-                setPadding(0, 0, 0, 0)
-                setOnClickListener {
-                    excludePackage(entry.packageName, entry.appName)
-                }
-            }
-
-            row.addView(timeTv)
-            row.addView(nameTv)
-            row.addView(durationTv)
-            row.addView(ghostBtn)
-            row.addView(excludeBtn)
-            binding.layoutTimelineList.addView(row)
+        } else {
+            binding.layoutMicroLogAccordion.visibility = View.GONE
         }
+
+        val logsToShow = if (mainLogs.isNotEmpty()) mainLogs.take(30) else timeline.take(15)
+        logsToShow.forEach { entry ->
+            binding.layoutTimelineList.addView(createCleanLogRow(entry, palette, isCompact = false))
+        }
+    }
+
+    private fun createCleanLogRow(
+        entry: TimelineEntry,
+        palette: IntArray,
+        isCompact: Boolean
+    ): View {
+        val timeFormatter = SimpleDateFormat("HH:mm:ss", Locale.JAPAN)
+        val isGhost = ghostAppsStore.getGhostPackages().contains(entry.packageName)
+
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(4, if (isCompact) 6 else 10, 4, if (isCompact) 6 else 10)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                showAppActionSheet(entry.packageName, entry.appName)
+            }
+        }
+
+        val colorIdx = TimelineGraphCalculator.colorIndexForPackage(entry.packageName, palette.size)
+
+        val timeTv = TextView(this).apply {
+            text = timeFormatter.format(Date(entry.timestampMs))
+            setTextColor(palette[colorIdx])
+            textSize = if (isCompact) 10.5f else 11.5f
+            typeface = android.graphics.Typeface.MONOSPACE
+            layoutParams = LinearLayout.LayoutParams(155, LinearLayout.LayoutParams.WRAP_CONTENT)
+        }
+
+        val nameTv = TextView(this).apply {
+            text = if (isGhost) "${entry.appName} [透過]" else entry.appName
+            setTextColor(
+                ContextCompat.getColor(
+                    this@MainActivity,
+                    if (isCompact) R.color.text_secondary else R.color.text_primary
+                )
+            )
+            textSize = if (isCompact) 11.5f else 12.5f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val durationTv = TextView(this).apply {
+            text = TimelineGraphCalculator.formatDurationClean(entry.durationSeconds)
+            val durColor = when {
+                entry.durationSeconds >= 900L -> R.color.accent_crimson
+                entry.durationSeconds >= 300L -> R.color.accent_amber
+                else -> R.color.accent_lime
+            }
+            setTextColor(ContextCompat.getColor(this@MainActivity, durColor))
+            textSize = if (isCompact) 11f else 12f
+            typeface = android.graphics.Typeface.MONOSPACE
+            setPadding(8, 0, 8, 0)
+        }
+
+        val chevronTv = TextView(this).apply {
+            text = "›"
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+            textSize = 14f
+            setPadding(4, 0, 4, 0)
+        }
+
+        row.addView(timeTv)
+        row.addView(nameTv)
+        row.addView(durationTv)
+        row.addView(chevronTv)
+        return row
     }
 
     private fun renderExclusionsList() {
@@ -613,9 +770,9 @@ class MainActivity : AppCompatActivity() {
 
         if (customExclusions.isEmpty()) {
             val emptyTv = TextView(this).apply {
-                text = "除外指定されたアプリはありません（「+ アプリを選んで除外」またはタイムライン横の「除外」から追加できます）"
+                text = "除外指定されたアプリはありません（「+ アプリ追加」または各アプリ行のタップから追加できます）"
                 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
-                textSize = 12f
+                textSize = 11.5f
                 setPadding(0, 4, 0, 4)
             }
             binding.layoutExclusionsList.addView(emptyTv)
@@ -664,7 +821,7 @@ class MainActivity : AppCompatActivity() {
 
         if (ghostPkgs.isEmpty()) {
             val emptyTv = TextView(this).apply {
-                text = "個別指定されたアプリはありません（「+ アプリを選んで追加」またはタイムライン横の「透過」からゲーム等を追加できます）"
+                text = "個別指定されたアプリはありません（「+ アプリ追加」または各アプリ行のタップからゲーム等を追加できます）"
                 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
                 textSize = 11.5f
                 setPadding(0, 4, 0, 4)
@@ -682,7 +839,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             val nameTv = TextView(this).apply {
-                text = "$appName [半透明・当たり判定なし]"
+                text = "$appName [半透明・タッチ透過]"
                 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent_cyan))
                 textSize = 12f
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -697,7 +854,7 @@ class MainActivity : AppCompatActivity() {
                 setPadding(0, 0, 0, 0)
                 setOnClickListener {
                     ghostAppsStore.removeGhostPackage(pkg)
-                    Toast.makeText(this@MainActivity, "$appName の半透明・透過モードを解除しました", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "$appName の透過モードを解除しました", Toast.LENGTH_SHORT).show()
                     updateUiState()
                 }
             }
@@ -710,10 +867,31 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderRankingList() {
         binding.layoutRankingList.removeAllViews()
+        val summaries = binding.timelineGraphView.getAppSummaries()
         val activeSessions = UsageMonitorService.tracker.getActiveSessions()
         val records = UsageMonitorService.tracker.getRecords()
 
-        if (activeSessions.isEmpty() && records.isEmpty()) {
+        val mergedMap = linkedMapOf<String, Pair<String, Long>>() // pkg -> (appName, totalSec)
+
+        for (summary in summaries) {
+            mergedMap[summary.packageName] = summary.appName to summary.totalSeconds.toLong()
+        }
+        for (s in activeSessions) {
+            val sec = s.continuousDurationMs / 1000L
+            val existing = mergedMap[s.packageName]?.second ?: 0L
+            mergedMap[s.packageName] = s.appName to maxOf(existing, sec)
+        }
+        for (r in records) {
+            val sec = r.maxContinuousMinutes * 60L
+            val existing = mergedMap[r.packageName]?.second ?: 0L
+            mergedMap[r.packageName] = r.appName to maxOf(existing, sec)
+        }
+
+        val mergedList = mergedMap.map { Triple(it.key, it.value.first, it.value.second) }
+            .sortedByDescending { it.third }
+            .take(5)
+
+        if (mergedList.isEmpty()) {
             val emptyTv = TextView(this).apply {
                 text = getString(R.string.no_records)
                 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
@@ -724,81 +902,93 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // 現在進行中の1時間セッションと確定レコードを統合表示（秒単位でも見えるようにする）
-        val mergedList = mutableListOf<Triple<String, String, Long>>() // (pkg, name, durationSec)
-        val seenPkgs = mutableSetOf<String>()
+        val totalAllSec = mergedList.sumOf { it.third }.coerceAtLeast(1L)
+        val density = resources.displayMetrics.density
 
-        for (s in activeSessions) {
-            val sec = s.continuousDurationMs / 1000L
-            val recMaxSec = (records.find { it.packageName == s.packageName }?.maxContinuousMinutes ?: 0L) * 60L
-            mergedList.add(Triple(s.packageName, s.appName, maxOf(sec, recMaxSec)))
-            seenPkgs.add(s.packageName)
-        }
-        for (r in records) {
-            if (!seenPkgs.contains(r.packageName)) {
-                mergedList.add(Triple(r.packageName, r.appName, r.maxContinuousMinutes * 60L))
-            }
-        }
-
-        mergedList.sortByDescending { it.third }
-
-        mergedList.take(10).forEachIndexed { index, item ->
+        mergedList.forEachIndexed { index, item ->
             val (pkg, appName, totalSec) = item
-            val mins = totalSec / 60L
-            val secs = totalSec % 60L
+            val pct = ((totalSec * 100L) / totalAllSec).toInt().coerceIn(2, 100)
+            val isGhost = ghostAppsStore.getGhostPackages().contains(pkg)
 
-            val row = LinearLayout(this).apply {
+            val itemContainer = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(4, (8 * density).toInt(), 4, (8 * density).toInt())
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    showAppActionSheet(pkg, appName)
+                }
+            }
+
+            val topRow = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, 8, 0, 8)
             }
 
             val rankTv = TextView(this).apply {
                 text = "#${index + 1}"
                 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent_cyan))
-                textSize = 12f
+                textSize = 11.5f
                 typeface = android.graphics.Typeface.MONOSPACE
-                layoutParams = LinearLayout.LayoutParams(65, LinearLayout.LayoutParams.WRAP_CONTENT)
+                layoutParams = LinearLayout.LayoutParams((28 * density).toInt(), LinearLayout.LayoutParams.WRAP_CONTENT)
+            }
+
+            val iconView = ImageView(this).apply {
+                val iconSize = (24 * density).toInt()
+                layoutParams = LinearLayout.LayoutParams(iconSize, iconSize).apply {
+                    marginEnd = (8 * density).toInt()
+                }
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                try {
+                    setImageDrawable(packageManager.getApplicationIcon(pkg))
+                } catch (_: Exception) {
+                    setImageResource(R.drawable.cura_peeking_chibi)
+                }
             }
 
             val nameTv = TextView(this).apply {
-                text = appName
+                text = if (isGhost) "$appName [透過]" else appName
                 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
                 textSize = 13f
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
 
+            val durationColorRes = when {
+                totalSec >= 1800L -> R.color.accent_crimson
+                totalSec >= 900L -> R.color.accent_amber
+                else -> R.color.accent_lime
+            }
+            val durationColor = ContextCompat.getColor(this, durationColorRes)
+
             val durationTv = TextView(this).apply {
-                text = if (mins > 0) "${mins}分${secs}秒" else "${secs}秒"
-                setTextColor(
-                    if (mins >= 30) {
-                        ContextCompat.getColor(this@MainActivity, R.color.accent_crimson)
-                    } else {
-                        ContextCompat.getColor(this@MainActivity, R.color.accent_lime)
-                    }
-                )
-                textSize = 12f
+                text = "${TimelineGraphCalculator.formatDurationClean(totalSec)} (${pct}%)"
+                setTextColor(durationColor)
+                textSize = 11.5f
                 typeface = android.graphics.Typeface.MONOSPACE
-                setPadding(8, 0, 12, 0)
+                setPadding(8, 0, 4, 0)
             }
 
-            val excludeBtn = Button(this).apply {
-                text = "除外"
-                textSize = 9f
-                backgroundTintList = ContextCompat.getColorStateList(this@MainActivity, R.color.bg_surface)
-                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent_amber))
-                layoutParams = LinearLayout.LayoutParams(110, 72)
-                setPadding(0, 0, 0, 0)
-                setOnClickListener {
-                    excludePackage(pkg, appName)
+            topRow.addView(rankTv)
+            topRow.addView(iconView)
+            topRow.addView(nameTv)
+            topRow.addView(durationTv)
+
+            val bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    (5 * density).toInt()
+                ).apply {
+                    topMargin = (5 * density).toInt()
                 }
+                max = 100
+                progress = pct
+                progressTintList = ColorStateList.valueOf(durationColor)
+                progressBackgroundTintList = ContextCompat.getColorStateList(this@MainActivity, R.color.bg_surface)
             }
 
-            row.addView(rankTv)
-            row.addView(nameTv)
-            row.addView(durationTv)
-            row.addView(excludeBtn)
-            binding.layoutRankingList.addView(row)
+            itemContainer.addView(topRow)
+            itemContainer.addView(bar)
+            binding.layoutRankingList.addView(itemContainer)
         }
     }
 

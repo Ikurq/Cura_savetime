@@ -5,38 +5,43 @@
     android:layout_height="match_parent"
     android:background="@color/bg_void"
     android:orientation="vertical"
-    android:padding="16dp"
     tools:context=".MainActivity">
 
-    <!-- HUD Header with Update Button -->
+    <!-- 1. Fixed Status Header -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="12dp"
+        android:background="@color/bg_panel"
         android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="12dp">
 
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:fontFamily="monospace"
-            android:text="@string/hud_header"
+            android:text="CURA_OS // TIME_DEFENSE_MONITOR"
             android:textColor="@color/accent_cyan"
-            android:textSize="12sp"
+            android:textSize="11.5sp"
             android:textStyle="bold" />
 
         <Button
             android:id="@+id/btnCheckUpdate"
             android:layout_width="wrap_content"
-            android:layout_height="32dp"
+            android:layout_height="28dp"
             android:layout_marginEnd="8dp"
             android:backgroundTint="@color/bg_surface"
             android:fontFamily="monospace"
-            android:paddingHorizontal="10dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:minWidth="0dp"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="0dp"
             android:text="更新確認"
-            android:textColor="@color/accent_cyan"
-            android:textSize="10sp" />
+            android:textColor="@color/text_secondary"
+            android:textSize="9.5sp" />
 
         <TextView
             android:id="@+id/tvStatusBadge"
@@ -46,30 +51,40 @@
             android:fontFamily="monospace"
             android:paddingHorizontal="8dp"
             android:paddingVertical="4dp"
-            android:text="[ STANDBY ]"
-            android:textColor="@color/text_secondary"
-            android:textSize="11sp" />
+            android:text="● ACTIVE"
+            android:textColor="@color/accent_lime"
+            android:textSize="10.5sp"
+            android:textStyle="bold" />
     </LinearLayout>
 
-    <ScrollView
+    <View
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/border_frame" />
+
+    <!-- Scrollable Tab Content Area -->
+    <ScrollView
+        android:id="@+id/mainScrollView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:fillViewport="true">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical">
+            android:orientation="vertical"
+            android:padding="14dp">
 
-            <!-- Permission Banner (Hidden when granted) -->
+            <!-- Permission Banners (Shown only when permissions are missing) -->
             <LinearLayout
                 android:id="@+id/layoutPermissionBanner"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
+                android:layout_marginBottom="10dp"
                 android:background="@drawable/bg_tactical_card"
                 android:orientation="vertical"
-                android:padding="14dp"
+                android:padding="12dp"
                 android:visibility="gone">
 
                 <TextView
@@ -78,7 +93,7 @@
                     android:fontFamily="monospace"
                     android:text="@string/permission_required_title"
                     android:textColor="@color/accent_crimson"
-                    android:textSize="12sp"
+                    android:textSize="11sp"
                     android:textStyle="bold" />
 
                 <TextView
@@ -87,28 +102,29 @@
                     android:layout_marginTop="4dp"
                     android:text="@string/permission_required_desc"
                     android:textColor="@color/text_secondary"
-                    android:textSize="12sp" />
+                    android:textSize="11.5sp" />
 
                 <Button
                     android:id="@+id/btnGrantPermission"
                     android:layout_width="wrap_content"
-                    android:layout_height="36dp"
+                    android:layout_height="34dp"
                     android:layout_marginTop="8dp"
                     android:backgroundTint="@color/accent_crimson"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
                     android:text="@string/grant_permission"
                     android:textColor="@color/text_primary"
-                    android:textSize="12sp" />
+                    android:textSize="11sp" />
             </LinearLayout>
 
-            <!-- Overlay Permission Banner (Side Sense Cura) -->
             <LinearLayout
                 android:id="@+id/layoutOverlayPermissionBanner"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
+                android:layout_marginBottom="10dp"
                 android:background="@drawable/bg_tactical_card"
                 android:orientation="vertical"
-                android:padding="14dp"
+                android:padding="12dp"
                 android:visibility="gone">
 
                 <TextView
@@ -117,37 +133,38 @@
                     android:fontFamily="monospace"
                     android:text=":: OVERLAY_PERMISSION_REQUIRED"
                     android:textColor="@color/accent_cyan"
-                    android:textSize="12sp"
+                    android:textSize="11sp"
                     android:textStyle="bold" />
 
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="画面端から覗き込むCuraと吹き出しを表示するために「他のアプリの上に重ねて表示」権限を許可してください。"
+                    android:text="画面端のCuraと吹き出しを表示するために「他のアプリの上に重ねて表示」を許可してください。"
                     android:textColor="@color/text_secondary"
-                    android:textSize="12sp" />
+                    android:textSize="11.5sp" />
 
                 <Button
                     android:id="@+id/btnGrantOverlayPermission"
                     android:layout_width="wrap_content"
-                    android:layout_height="36dp"
+                    android:layout_height="34dp"
                     android:layout_marginTop="8dp"
                     android:backgroundTint="@color/accent_cyan"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
                     android:text="重ねて表示を許可する"
                     android:textColor="@color/bg_void"
-                    android:textSize="12sp" />
+                    android:textSize="11sp" />
             </LinearLayout>
 
-            <!-- Accessibility Permission Banner -->
             <LinearLayout
                 android:id="@+id/layoutAccessibilityBanner"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
+                android:layout_marginBottom="10dp"
                 android:background="@drawable/bg_tactical_card"
                 android:orientation="vertical"
-                android:padding="14dp"
+                android:padding="12dp"
                 android:visibility="gone">
 
                 <TextView
@@ -156,7 +173,7 @@
                     android:fontFamily="monospace"
                     android:text="@string/accessibility_required_title"
                     android:textColor="@color/accent_amber"
-                    android:textSize="12sp"
+                    android:textSize="11sp"
                     android:textStyle="bold" />
 
                 <TextView
@@ -165,453 +182,763 @@
                     android:layout_marginTop="4dp"
                     android:text="@string/accessibility_required_desc"
                     android:textColor="@color/text_secondary"
-                    android:textSize="12sp" />
+                    android:textSize="11.5sp" />
 
                 <Button
                     android:id="@+id/btnGrantAccessibility"
                     android:layout_width="wrap_content"
-                    android:layout_height="36dp"
+                    android:layout_height="34dp"
                     android:layout_marginTop="8dp"
                     android:backgroundTint="@color/accent_amber"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
                     android:text="@string/grant_accessibility"
                     android:textColor="@color/bg_void"
-                    android:textSize="12sp" />
-            </LinearLayout>
-
-            <!-- Active App Continuous Usage Card -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                android:background="@drawable/bg_tactical_card"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:fontFamily="monospace"
-                        android:text="@string/active_app_title"
-                        android:textColor="@color/accent_crimson"
-                        android:textSize="11sp"
-                        android:textStyle="bold" />
-
-                    <Button
-                        android:id="@+id/btnExcludeCurrentApp"
-                        android:layout_width="wrap_content"
-                        android:layout_height="28dp"
-                        android:backgroundTint="@color/bg_surface"
-                        android:text="このアプリを除外"
-                        android:textColor="@color/accent_crimson"
-                        android:textSize="10sp"
-                        android:visibility="gone" />
-                </LinearLayout>
-
-                <TextView
-                    android:id="@+id/tvActiveAppName"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="@string/no_active_session"
-                    android:textColor="@color/text_primary"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
-
-                <!-- Continuous Timer Display -->
-                <TextView
-                    android:id="@+id/tvContinuousTimer"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:fontFamily="monospace"
-                    android:text="00:00:00"
-                    android:textColor="@color/accent_crimson"
-                    android:textSize="36sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/tvBufferStatus"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:fontFamily="monospace"
-                    android:text="[ 計測中 ]"
-                    android:textColor="@color/accent_lime"
                     android:textSize="11sp" />
             </LinearLayout>
 
-            <!-- Daemon Toggle Card -->
+            <!-- ========================================================= -->
+            <!-- TAB 1: HOME / DASHBOARD (ファーストビュー最優先)              -->
+            <!-- ========================================================= -->
             <LinearLayout
+                android:id="@+id/tabContainerHome"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                android:background="@drawable/bg_tactical_card"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:padding="14dp">
+                android:orientation="vertical"
+                android:visibility="visible">
 
+                <!-- 2. Hero Section: Today's Total Usage & Character Comm-Link -->
                 <LinearLayout
-                    android:layout_width="0dp"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
+                    android:layout_marginBottom="12dp"
+                    android:background="@drawable/bg_tactical_card"
+                    android:orientation="vertical"
+                    android:padding="16dp">
 
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:fontFamily="monospace"
+                            android:text=":: TODAY_TOTAL_USAGE // 本日累計"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="10.5sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tvBufferStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="monospace"
+                            android:text="[ 監視中 ]"
+                            android:textColor="@color/accent_lime"
+                            android:textSize="10.5sp" />
+                    </LinearLayout>
+
+                    <!-- Large Bold Total Usage Readout -->
                     <TextView
+                        android:id="@+id/tvTodayTotalTimer"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
                         android:fontFamily="monospace"
-                        android:text="@string/service_toggle_title"
-                        android:textColor="@color/accent_cyan"
-                        android:textSize="11sp"
+                        android:text="00:00:00"
+                        android:textColor="@color/text_primary"
+                        android:textSize="36sp"
                         android:textStyle="bold" />
 
-                    <TextView
-                        android:layout_width="wrap_content"
+                    <!-- Active App Sub-row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
-                        android:text="常駐監視（毎正時に自動リセット）"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/tvActiveAppName"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="現在: 待機中"
+                            android:textColor="@color/accent_cyan"
+                            android:textSize="12.5sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tvContinuousTimer"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="monospace"
+                            android:text="00:00:00"
+                            android:textColor="@color/accent_cyan"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+
+                        <Button
+                            android:id="@+id/btnExcludeCurrentApp"
+                            android:layout_width="wrap_content"
+                            android:layout_height="24dp"
+                            android:layout_marginStart="8dp"
+                            android:backgroundTint="@color/bg_surface"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:minWidth="0dp"
+                            android:paddingHorizontal="8dp"
+                            android:paddingVertical="0dp"
+                            android:text="除外"
+                            android:textColor="@color/accent_amber"
+                            android:textSize="9.5sp"
+                            android:visibility="gone" />
+                    </LinearLayout>
+
+                    <!-- Goal Progress Bar -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:fontFamily="monospace"
+                            android:text="1時間予算 (目標 30分以内)"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="10.5sp" />
+
+                        <TextView
+                            android:id="@+id/tvGoalProgressLabel"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="monospace"
+                            android:text="0% 使用済み"
+                            android:textColor="@color/accent_lime"
+                            android:textSize="10.5sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <ProgressBar
+                        android:id="@+id/progressHourlyGoal"
+                        style="?android:attr/progressBarStyleHorizontal"
+                        android:layout_width="match_parent"
+                        android:layout_height="6dp"
+                        android:layout_marginTop="4dp"
+                        android:max="100"
+                        android:progress="0"
+                        android:progressBackgroundTint="@color/bg_surface"
+                        android:progressTint="@color/accent_lime" />
+
+                    <!-- Integrated Character Comm-Link Window (Terminal Assistant Frame) -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:background="@color/bg_surface"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="10dp">
+
+                        <ImageView
+                            android:layout_width="46dp"
+                            android:layout_height="46dp"
+                            android:layout_marginEnd="10dp"
+                            android:adjustViewBounds="true"
+                            android:contentDescription="Cura Assistant"
+                            android:scaleType="fitCenter"
+                            android:src="@drawable/cura_peeking_chibi" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="monospace"
+                                android:text=":: CURA_COMM_LINK // ASSISTANT"
+                                android:textColor="@color/accent_cyan"
+                                android:textSize="9.5sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/tvHeroCuraMessage"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="マスター、今日もスマホの使いすぎに気をつけて一緒にがんばりましょうねっ！"
+                                android:textColor="@color/text_primary"
+                                android:textSize="11.5sp" />
+                        </LinearLayout>
+
+                        <Button
+                            android:id="@+id/btnHeroBlock30s"
+                            android:layout_width="wrap_content"
+                            android:layout_height="32dp"
+                            android:layout_marginStart="8dp"
+                            android:backgroundTint="@color/accent_crimson"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:minWidth="0dp"
+                            android:paddingHorizontal="10dp"
+                            android:paddingVertical="0dp"
+                            android:text="30秒休む"
+                            android:textColor="@color/text_primary"
+                            android:textSize="10sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
                 </LinearLayout>
 
-                <com.google.android.material.materialswitch.MaterialSwitch
-                    android:id="@+id/switchMonitorDaemon"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
-            </LinearLayout>
-
-            <!-- Timeline Card (86,400-Second X-Axis / Seconds Y-Axis Graph + Switch History) -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                android:background="@drawable/bg_tactical_card"
-                android:orientation="vertical"
-                android:padding="16dp">
-
+                <!-- 3. Simplified 24H Trend Graph Card -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="6dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
+                    android:layout_marginBottom="12dp"
+                    android:background="@drawable/bg_tactical_card"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="6dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:fontFamily="monospace"
+                            android:text=":: TODAY_TREND // 24H_TIMELINE"
+                            android:textColor="@color/accent_cyan"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
+
+                        <Button
+                            android:id="@+id/btnZoom24h"
+                            android:layout_width="wrap_content"
+                            android:layout_height="26dp"
+                            android:layout_marginEnd="4dp"
+                            android:backgroundTint="@color/bg_surface"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:minWidth="40dp"
+                            android:paddingHorizontal="6dp"
+                            android:paddingVertical="0dp"
+                            android:text="24H"
+                            android:textColor="@color/accent_cyan"
+                            android:textSize="9sp" />
+
+                        <Button
+                            android:id="@+id/btnZoom6h"
+                            android:layout_width="wrap_content"
+                            android:layout_height="26dp"
+                            android:layout_marginEnd="4dp"
+                            android:backgroundTint="@color/bg_surface"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:minWidth="36dp"
+                            android:paddingHorizontal="6dp"
+                            android:paddingVertical="0dp"
+                            android:text="6H"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="9sp" />
+
+                        <Button
+                            android:id="@+id/btnZoom1h"
+                            android:layout_width="wrap_content"
+                            android:layout_height="26dp"
+                            android:layout_marginEnd="4dp"
+                            android:backgroundTint="@color/bg_surface"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:minWidth="36dp"
+                            android:paddingHorizontal="6dp"
+                            android:paddingVertical="0dp"
+                            android:text="1H"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="9sp" />
+
+                        <Button
+                            android:id="@+id/btnZoom15m"
+                            android:layout_width="wrap_content"
+                            android:layout_height="26dp"
+                            android:backgroundTint="@color/bg_surface"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:minWidth="40dp"
+                            android:paddingHorizontal="6dp"
+                            android:paddingVertical="0dp"
+                            android:text="15M"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="9sp" />
+                    </LinearLayout>
 
                     <TextView
-                        android:layout_width="0dp"
+                        android:id="@+id/tvTimelineInspector"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
+                        android:layout_marginBottom="6dp"
+                        android:background="@color/bg_surface"
                         android:fontFamily="monospace"
-                        android:text=":: TIMELINE // 86400s_GRAPH (縦:秒)"
-                        android:textColor="@color/accent_cyan"
-                        android:textSize="11sp"
-                        android:textStyle="bold" />
+                        android:paddingHorizontal="8dp"
+                        android:paddingVertical="5dp"
+                        android:text="グラフをタップ・なぞると指定秒のアプリと使用秒数を表示します"
+                        android:textColor="@color/accent_lime"
+                        android:textSize="10.5sp" />
 
-                    <Button
-                        android:id="@+id/btnZoom24h"
-                        android:layout_width="wrap_content"
-                        android:layout_height="28dp"
-                        android:layout_marginEnd="4dp"
-                        android:backgroundTint="@color/bg_surface"
-                        android:minWidth="44dp"
-                        android:paddingHorizontal="6dp"
-                        android:paddingVertical="0dp"
-                        android:text="24H"
-                        android:textColor="@color/accent_cyan"
-                        android:textSize="9sp" />
+                    <jp.cura.savetime.ui.TimelineGraphView
+                        android:id="@+id/timelineGraphView"
+                        android:layout_width="match_parent"
+                        android:layout_height="175dp"
+                        android:layout_marginBottom="6dp" />
 
-                    <Button
-                        android:id="@+id/btnZoom6h"
-                        android:layout_width="wrap_content"
-                        android:layout_height="28dp"
-                        android:layout_marginEnd="4dp"
-                        android:backgroundTint="@color/bg_surface"
-                        android:minWidth="40dp"
-                        android:paddingHorizontal="6dp"
-                        android:paddingVertical="0dp"
-                        android:text="6H"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="9sp" />
-
-                    <Button
-                        android:id="@+id/btnZoom1h"
-                        android:layout_width="wrap_content"
-                        android:layout_height="28dp"
-                        android:layout_marginEnd="4dp"
-                        android:backgroundTint="@color/bg_surface"
-                        android:minWidth="40dp"
-                        android:paddingHorizontal="6dp"
-                        android:paddingVertical="0dp"
-                        android:text="1H"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="9sp" />
-
-                    <Button
-                        android:id="@+id/btnZoom15m"
-                        android:layout_width="wrap_content"
-                        android:layout_height="28dp"
-                        android:backgroundTint="@color/bg_surface"
-                        android:minWidth="44dp"
-                        android:paddingHorizontal="6dp"
-                        android:paddingVertical="0dp"
-                        android:text="15M"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="9sp" />
+                    <LinearLayout
+                        android:id="@+id/layoutTimelineLegend"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical" />
                 </LinearLayout>
 
-                <!-- Inspector Readout (Tap/Scrub on 86,400s axis) -->
-                <TextView
-                    android:id="@+id/tvTimelineInspector"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="6dp"
-                    android:background="@color/bg_surface"
-                    android:fontFamily="monospace"
-                    android:paddingHorizontal="8dp"
-                    android:paddingVertical="6dp"
-                    android:text="グラフをタップ・なぞると指定秒のアプリと使用秒数を表示します"
-                    android:textColor="@color/accent_lime"
-                    android:textSize="11sp" />
-
-                <!-- 86,400-Second X-axis / Seconds Y-axis Graph -->
-                <jp.cura.savetime.ui.TimelineGraphView
-                    android:id="@+id/timelineGraphView"
-                    android:layout_width="match_parent"
-                    android:layout_height="190dp"
-                    android:layout_marginBottom="8dp" />
-
-                <!-- App Color Legend -->
-                <LinearLayout
-                    android:id="@+id/layoutTimelineLegend"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="10dp"
-                    android:orientation="vertical" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="6dp"
-                    android:fontFamily="monospace"
-                    android:text=":: RECENT_SWITCH_LOG (直近の切り替え)"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="10sp"
-                    android:textStyle="bold" />
-
-                <LinearLayout
-                    android:id="@+id/layoutTimelineList"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical" />
-            </LinearLayout>
-
-            <!-- Exclusion Settings Card -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                android:background="@drawable/bg_tactical_card"
-                android:orientation="vertical"
-                android:padding="16dp">
-
+                <!-- 4. Top Usage Apps Card (Top 3-5 with Progress Bar & Tap Action Sheet) -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="8dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
+                    android:background="@drawable/bg_tactical_card"
+                    android:orientation="vertical"
+                    android:padding="14dp">
 
-                    <TextView
-                        android:layout_width="0dp"
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:fontFamily="monospace"
-                        android:text=":: EXCLUSIONS // 監視除外アプリ"
-                        android:textColor="@color/accent_amber"
-                        android:textSize="11sp"
-                        android:textStyle="bold" />
+                        android:layout_marginBottom="8dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
 
-                    <Button
-                        android:id="@+id/btnAddExclusion"
-                        android:layout_width="wrap_content"
-                        android:layout_height="30dp"
-                        android:backgroundTint="@color/accent_amber"
-                        android:paddingHorizontal="10dp"
-                        android:text="+ アプリを選んで除外"
-                        android:textColor="@color/bg_void"
-                        android:textSize="10sp"
-                        android:textStyle="bold" />
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:fontFamily="monospace"
+                            android:text=":: TOP_USAGE_APPS // 利用時間トップ5"
+                            android:textColor="@color/accent_lime"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="行タップで操作"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="10sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/layoutRankingList"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical" />
                 </LinearLayout>
-
-                <LinearLayout
-                    android:id="@+id/layoutExclusionsList"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical" />
             </LinearLayout>
 
-            <!-- Game / Ghost Mode (Semi-transparent + No Touch Collision) Card -->
+            <!-- ========================================================= -->
+            <!-- TAB 2: DETAILED LOGS (生ログ抑制・アコーディオン・行タップ操作) -->
+            <!-- ========================================================= -->
             <LinearLayout
+                android:id="@+id/tabContainerLogs"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                android:background="@drawable/bg_tactical_card"
                 android:orientation="vertical"
-                android:padding="16dp">
+                android:visibility="gone">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="6dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
+                    android:background="@drawable/bg_tactical_card"
+                    android:orientation="vertical"
+                    android:padding="14dp">
 
-                    <TextView
-                        android:layout_width="0dp"
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:fontFamily="monospace"
-                        android:text=":: GAME_GHOST_MODE // 半透明・当たり判定なし"
-                        android:textColor="@color/accent_cyan"
-                        android:textSize="11sp"
-                        android:textStyle="bold" />
+                        android:layout_marginBottom="4dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:fontFamily="monospace"
+                            android:text=":: ACTIVITY_LOGS // アプリ切り替え履歴"
+                            android:textColor="@color/accent_cyan"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tvLogSummaryBadge"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="monospace"
+                            android:text="行タップで設定"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="10sp" />
+                    </LinearLayout>
+
+                    <!-- Micro-switch (<5s) Accordion Banner -->
+                    <LinearLayout
+                        android:id="@+id/layoutMicroLogAccordion"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginVertical="6dp"
+                        android:background="@color/bg_surface"
+                        android:orientation="vertical"
+                        android:padding="10dp"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:id="@+id/tvMicroLogHeader"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="monospace"
+                            android:text="▸ その他の短時間切り替え（5秒未満）"
+                            android:textColor="@color/accent_amber"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
+
+                        <LinearLayout
+                            android:id="@+id/layoutMicroLogList"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:orientation="vertical"
+                            android:visibility="gone" />
+                    </LinearLayout>
+
+                    <!-- Clean Main Logs List (>= 5s) -->
+                    <LinearLayout
+                        android:id="@+id/layoutTimelineList"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- ========================================================= -->
+            <!-- TAB 3: BLOCK & LIMIT SETTINGS (制限・透過・除外・セリフ設定)  -->
+            <!-- ========================================================= -->
+            <LinearLayout
+                android:id="@+id/tabContainerSettings"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <!-- Daemon Toggle & Quick Block Card -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:background="@drawable/bg_tactical_card"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="monospace"
+                                android:text=":: DEFENSE_DAEMON // 常駐監視サービス"
+                                android:textColor="@color/accent_cyan"
+                                android:textSize="11sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="毎正時に自動リセット・5分ごとに通知"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="11.5sp" />
+                        </LinearLayout>
+
+                        <com.google.android.material.materialswitch.MaterialSwitch
+                            android:id="@+id/switchMonitorDaemon"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
+                    </LinearLayout>
 
                     <Button
-                        android:id="@+id/btnAddGhostApp"
-                        android:layout_width="wrap_content"
-                        android:layout_height="30dp"
-                        android:backgroundTint="@color/accent_cyan"
-                        android:paddingHorizontal="10dp"
-                        android:text="+ アプリを選んで追加"
-                        android:textColor="@color/bg_void"
-                        android:textSize="10sp"
-                        android:textStyle="bold" />
-                </LinearLayout>
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="6dp"
-                    android:text="指定アプリ（ゲーム等）使用中はCuraを半透明にし、当たり判定を完全に無効化（背面へタッチ透過）します。5分ごとのメッセージ通知はそのまま表示されます。"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="11sp" />
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="8dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="ゲームカテゴリのアプリを自動で半透明・透過にする"
+                        android:id="@+id/btnQuickBlock30s"
+                        android:layout_width="match_parent"
+                        android:layout_height="38dp"
+                        android:layout_marginTop="10dp"
+                        android:backgroundTint="@color/accent_crimson"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:text="今すぐ30秒間フルスクリーンで画面をブロック"
                         android:textColor="@color/text_primary"
-                        android:textSize="12sp" />
-
-                    <com.google.android.material.materialswitch.MaterialSwitch
-                        android:id="@+id/switchAutoGameGhost"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:id="@+id/layoutGhostAppsList"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical" />
-            </LinearLayout>
-
-            <!-- 5-Minute Message Slot & AI Prompt Card -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                android:background="@drawable/bg_tactical_card"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="4dp"
-                    android:fontFamily="monospace"
-                    android:text=":: CURA_5MIN_DIALOGUE // 5分周期セリフ枠・AI連携"
-                    android:textColor="@color/accent_lime"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="8dp"
-                    android:text="アプリ5分ごと・画面5分ごとに表示するセリフ枠です。「AI用プロンプトをコピー」して他のAIに出力させたJSONをそのまま貼り付けて反映できます。"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="11sp" />
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal">
-
-                    <Button
-                        android:id="@+id/btnCopyAiPrompt"
-                        android:layout_width="0dp"
-                        android:layout_height="36dp"
-                        android:layout_marginEnd="6dp"
-                        android:layout_weight="1"
-                        android:backgroundTint="@color/bg_surface"
-                        android:text="AI用プロンプトをコピー"
-                        android:textColor="@color/accent_cyan"
-                        android:textSize="11sp" />
-
-                    <Button
-                        android:id="@+id/btnEditDialogueJson"
-                        android:layout_width="0dp"
-                        android:layout_height="36dp"
-                        android:layout_weight="1"
-                        android:backgroundTint="@color/accent_lime"
-                        android:text="セリフ枠(JSON)を貼付・編集"
-                        android:textColor="@color/bg_void"
-                        android:textSize="11sp"
+                        android:textSize="11.5sp"
                         android:textStyle="bold" />
                 </LinearLayout>
-            </LinearLayout>
 
-            <!-- Worst Continuous Usage Ranking -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
-                android:background="@drawable/bg_tactical_card"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="8dp"
-                    android:fontFamily="monospace"
-                    android:text="@string/worst_ranking_title"
-                    android:textColor="@color/accent_lime"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
-
+                <!-- Game / Ghost Mode Card -->
                 <LinearLayout
-                    android:id="@+id/layoutRankingList"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical" />
+                    android:layout_marginBottom="12dp"
+                    android:background="@drawable/bg_tactical_card"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="6dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:fontFamily="monospace"
+                            android:text=":: GAME_GHOST_MODE // 半透明・タッチ透過"
+                            android:textColor="@color/accent_cyan"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
+
+                        <Button
+                            android:id="@+id/btnAddGhostApp"
+                            android:layout_width="wrap_content"
+                            android:layout_height="28dp"
+                            android:backgroundTint="@color/accent_cyan"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:paddingHorizontal="10dp"
+                            android:paddingVertical="0dp"
+                            android:text="+ アプリ追加"
+                            android:textColor="@color/bg_void"
+                            android:textSize="10sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="6dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="ゲームカテゴリのアプリを自動で半透明・透過にする"
+                            android:textColor="@color/text_primary"
+                            android:textSize="11.5sp" />
+
+                        <com.google.android.material.materialswitch.MaterialSwitch
+                            android:id="@+id/switchAutoGameGhost"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/layoutGhostAppsList"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical" />
+                </LinearLayout>
+
+                <!-- Exclusions Card -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:background="@drawable/bg_tactical_card"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="6dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:fontFamily="monospace"
+                            android:text=":: EXCLUSIONS // 監視除外アプリ"
+                            android:textColor="@color/accent_amber"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
+
+                        <Button
+                            android:id="@+id/btnAddExclusion"
+                            android:layout_width="wrap_content"
+                            android:layout_height="28dp"
+                            android:backgroundTint="@color/accent_amber"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:paddingHorizontal="10dp"
+                            android:paddingVertical="0dp"
+                            android:text="+ アプリ追加"
+                            android:textColor="@color/bg_void"
+                            android:textSize="10sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/layoutExclusionsList"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical" />
+                </LinearLayout>
+
+                <!-- 5-Minute Dialogue & AI Prompt Card -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:background="@drawable/bg_tactical_card"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="4dp"
+                        android:fontFamily="monospace"
+                        android:text=":: CURA_5MIN_DIALOGUE // セリフ枠・AI連携"
+                        android:textColor="@color/accent_lime"
+                        android:textSize="11sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:orientation="horizontal">
+
+                        <Button
+                            android:id="@+id/btnCopyAiPrompt"
+                            android:layout_width="0dp"
+                            android:layout_height="34dp"
+                            android:layout_marginEnd="6dp"
+                            android:layout_weight="1"
+                            android:backgroundTint="@color/bg_surface"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:text="AIプロンプトをコピー"
+                            android:textColor="@color/accent_cyan"
+                            android:textSize="10.5sp" />
+
+                        <Button
+                            android:id="@+id/btnEditDialogueJson"
+                            android:layout_width="0dp"
+                            android:layout_height="34dp"
+                            android:layout_weight="1"
+                            android:backgroundTint="@color/accent_lime"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:text="セリフJSON貼付・編集"
+                            android:textColor="@color/bg_void"
+                            android:textSize="10.5sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+                </LinearLayout>
             </LinearLayout>
 
         </LinearLayout>
     </ScrollView>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/border_frame" />
+
+    <!-- Bottom Navigation Bar (3 Tabs) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="54dp"
+        android:background="@color/bg_panel"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="8dp">
+
+        <Button
+            android:id="@+id/btnTabHome"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_marginHorizontal="4dp"
+            android:layout_weight="1"
+            android:backgroundTint="@color/bg_surface"
+            android:fontFamily="monospace"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:padding="0dp"
+            android:text="ホーム"
+            android:textColor="@color/accent_cyan"
+            android:textSize="11.5sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnTabLogs"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_marginHorizontal="4dp"
+            android:layout_weight="1"
+            android:backgroundTint="@color/bg_panel"
+            android:fontFamily="monospace"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:padding="0dp"
+            android:text="詳細ログ"
+            android:textColor="@color/text_secondary"
+            android:textSize="11.5sp" />
+
+        <Button
+            android:id="@+id/btnTabSettings"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_marginHorizontal="4dp"
+            android:layout_weight="1"
+            android:backgroundTint="@color/bg_panel"
+            android:fontFamily="monospace"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:padding="0dp"
+            android:text="ブロック/設定"
+            android:textColor="@color/text_secondary"
+            android:textSize="11.5sp" />
+    </LinearLayout>
 
 </LinearLayout>
