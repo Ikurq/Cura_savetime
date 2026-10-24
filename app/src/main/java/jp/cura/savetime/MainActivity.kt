@@ -28,8 +28,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import jp.cura.savetime.databinding.ActivityMainBinding
+import jp.cura.savetime.model.TimelineEntry
 import jp.cura.savetime.service.UsageMonitorService
-import jp.cura.savetime.tracker.TimelineEntry
 import jp.cura.savetime.tracker.TimelineGraphCalculator
 import jp.cura.savetime.util.AppNameResolver
 import jp.cura.savetime.util.AppUpdateManager
