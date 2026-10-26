@@ -67,7 +67,7 @@ class MainActivity : AppCompatActivity() {
         UsageMonitorService.refreshIgnoredPackages(this)
         binding.switchAutoGameGhost.isChecked = ghostAppsStore.isAutoDetectGameCategoryEnabled()
         setupListeners()
-        switchTab(0)
+        binding.bottomNavigation.selectedItemId = R.id.nav_home
         requestNotificationPermissionIfNeeded()
 
         // 初回起動時に使用状況アクセス権限があれば自動的に常駐サービスを開始
@@ -97,9 +97,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupListeners() {
-        binding.btnTabHome.setOnClickListener { switchTab(0) }
-        binding.btnTabLogs.setOnClickListener { switchTab(1) }
-        binding.btnTabSettings.setOnClickListener { switchTab(2) }
+        binding.bottomNavigation.setOnItemSelectedListener { item ->
+            animateNavBulge(item.itemId)
+            when (item.itemId) {
+                R.id.nav_home -> switchTab(0)
+                R.id.nav_logs -> switchTab(1)
+                R.id.nav_settings -> switchTab(2)
+            }
+            true
+        }
 
         binding.btnGrantPermission.setOnClickListener {
             startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
@@ -201,22 +207,77 @@ class MainActivity : AppCompatActivity() {
         binding.tabContainerHome.visibility = if (tabIndex == 0) View.VISIBLE else View.GONE
         binding.tabContainerLogs.visibility = if (tabIndex == 1) View.VISIBLE else View.GONE
         binding.tabContainerSettings.visibility = if (tabIndex == 2) View.VISIBLE else View.GONE
-
-        val activeText = ContextCompat.getColor(this, R.color.accent_cyan)
-        val inactiveText = ContextCompat.getColor(this, R.color.text_secondary)
-        val activeBg = ContextCompat.getColorStateList(this, R.color.bg_surface)
-        val inactiveBg = ContextCompat.getColorStateList(this, R.color.bg_panel)
-
-        binding.btnTabHome.setTextColor(if (tabIndex == 0) activeText else inactiveText)
-        binding.btnTabHome.backgroundTintList = if (tabIndex == 0) activeBg else inactiveBg
-
-        binding.btnTabLogs.setTextColor(if (tabIndex == 1) activeText else inactiveText)
-        binding.btnTabLogs.backgroundTintList = if (tabIndex == 1) activeBg else inactiveBg
-
-        binding.btnTabSettings.setTextColor(if (tabIndex == 2) activeText else inactiveText)
-        binding.btnTabSettings.backgroundTintList = if (tabIndex == 2) activeBg else inactiveBg
-
         binding.mainScrollView.scrollTo(0, 0)
+    }
+
+    private fun animateNavBulge(itemId: Int) {
+        val nav = binding.bottomNavigation
+        val bulge = binding.navBulgeCircle
+
+        // 1. 実際に表示されているメニュー項目のみを抽出
+        val visibleItems = mutableListOf<Int>()
+        for (i in 0 until nav.menu.size()) {
+            val item = nav.menu.getItem(i)
+            if (item.isVisible) {
+                visibleItems.add(item.itemId)
+            }
+        }
+        val visibleCount = visibleItems.size
+        if (visibleCount == 0) return
+
+        val index = visibleItems.indexOf(itemId).coerceAtLeast(0)
+
+        nav.post {
+            val totalWidth = nav.width
+            val itemWidth = totalWidth / visibleCount
+            val targetX = (itemWidth * index) + (itemWidth / 2) - (bulge.width / 2)
+
+            // 2. 突起サークルのスライドアニメーション
+            bulge.animate()
+                .translationX(targetX.toFloat())
+                .setDuration(300)
+                .setInterpolator(android.view.animation.DecelerateInterpolator())
+                .start()
+
+            // 3. アイコン・文字のリフトアップ処理（クリッピングを解除しながら上方向へ移動）
+            val menuView = nav.getChildAt(0) as? android.view.ViewGroup ?: return@post
+            menuView.clipChildren = false
+            menuView.clipToPadding = false
+
+            var visibleViewIndex = 0
+            for (i in 0 until menuView.childCount) {
+                val itemView = menuView.getChildAt(i) as? android.view.ViewGroup ?: continue
+                itemView.clipChildren = false
+                itemView.clipToPadding = false
+
+                if (itemView.visibility != View.VISIBLE) continue
+
+                if (itemView.childCount > 0) {
+                    val icon = itemView.getChildAt(0)
+                    if (icon is android.view.ViewGroup) {
+                        icon.clipChildren = false
+                        icon.clipToPadding = false
+                    }
+
+                    if (visibleViewIndex == index) {
+                        // 選択アイテム: アイコンを持ち上げ、ラベルもわずかに引き上げる
+                        icon.animate().translationY(-64f).setDuration(300).start()
+                        if (itemView.childCount > 1) {
+                            val label = itemView.getChildAt(1)
+                            label.animate().translationY(-12f).setDuration(300).start()
+                        }
+                    } else {
+                        // 非選択アイテム: 通常の基準位置へ戻す
+                        icon.animate().translationY(0f).setDuration(250).start()
+                        if (itemView.childCount > 1) {
+                            val label = itemView.getChildAt(1)
+                            label.animate().translationY(0f).setDuration(250).start()
+                        }
+                    }
+                }
+                visibleViewIndex++
+            }
+        }
     }
 
     private fun triggerThirtySecondBlock() {

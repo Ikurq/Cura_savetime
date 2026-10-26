@@ -6,4 +6,29 @@
         <item name="colorPrimary">@color/accent_crimson</item>
         <item name="colorSecondary">@color/accent_cyan</item>
     </style>
+
+    <style name="BulgeBottomNavigation" parent="Widget.Material3.BottomNavigationView">
+        <item name="itemIconSize">28dp</item>
+        <item name="itemTextAppearanceActive">@style/NavText.Active</item>
+        <item name="itemTextAppearanceInactive">@style/NavText.Inactive</item>
+        <item name="itemIconTint">@color/selector_nav_color</item>
+        <item name="itemTextColor">@color/selector_nav_color</item>
+        <item name="backgroundTint">@android:color/transparent</item>
+        <item name="itemActiveIndicatorStyle">@style/TransparentActiveIndicator</item>
+    </style>
+
+    <style name="NavText.Active" parent="TextAppearance.Material3.LabelSmall">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/nav_selected_color</item>
+    </style>
+
+    <style name="NavText.Inactive" parent="TextAppearance.Material3.LabelSmall">
+        <item name="android:textSize">11sp</item>
+        <item name="android:textColor">@color/nav_unselected_color</item>
+    </style>
+
+    <style name="TransparentActiveIndicator" parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
+        <item name="android:color">@android:color/transparent</item>
+    </style>
 </resources>

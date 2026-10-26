@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/bg_void"
+    android:clipChildren="false"
+    android:clipToPadding="false"
     android:orientation="vertical"
     tools:context=".MainActivity">
 
@@ -880,65 +883,55 @@
         </LinearLayout>
     </ScrollView>
 
-    <View
+    <!-- 凸型フローティング・ボトムナビゲーション (Bulge Navigation / 3層構造) -->
+    <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@color/border_frame" />
+        android:layout_height="150dp"
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginBottom="8dp"
+        android:clipChildren="false"
+        android:clipToPadding="false">
 
-    <!-- Bottom Navigation Bar (3 Tabs) -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="54dp"
-        android:background="@color/bg_panel"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingHorizontal="8dp">
+        <!-- Layer 1: 移動する突起サークル -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/navBulgeCircle"
+            android:layout_width="70dp"
+            android:layout_height="70dp"
+            android:layout_gravity="bottom|start"
+            android:layout_marginBottom="65dp"
+            app:cardBackgroundColor="@color/nav_bar_color"
+            app:cardCornerRadius="35dp"
+            app:cardElevation="0dp"
+            app:strokeWidth="0dp" />
 
-        <Button
-            android:id="@+id/btnTabHome"
-            android:layout_width="0dp"
-            android:layout_height="40dp"
-            android:layout_marginHorizontal="4dp"
-            android:layout_weight="1"
-            android:backgroundTint="@color/bg_surface"
-            android:fontFamily="monospace"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:padding="0dp"
-            android:text="ホーム"
-            android:textColor="@color/accent_cyan"
-            android:textSize="11.5sp"
-            android:textStyle="bold" />
+        <!-- Layer 2: メインフローティングバー -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="80dp"
+            android:layout_gravity="bottom"
+            android:layout_marginBottom="30dp"
+            android:background="@drawable/bg_nav_base"
+            android:elevation="0dp" />
 
-        <Button
-            android:id="@+id/btnTabLogs"
-            android:layout_width="0dp"
-            android:layout_height="40dp"
-            android:layout_marginHorizontal="4dp"
-            android:layout_weight="1"
-            android:backgroundTint="@color/bg_panel"
-            android:fontFamily="monospace"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:padding="0dp"
-            android:text="詳細ログ"
-            android:textColor="@color/text_secondary"
-            android:textSize="11.5sp" />
-
-        <Button
-            android:id="@+id/btnTabSettings"
-            android:layout_width="0dp"
-            android:layout_height="40dp"
-            android:layout_marginHorizontal="4dp"
-            android:layout_weight="1"
-            android:backgroundTint="@color/bg_panel"
-            android:fontFamily="monospace"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:padding="0dp"
-            android:text="ブロック/設定"
-            android:textColor="@color/text_secondary"
-            android:textSize="11.5sp" />
-    </LinearLayout>
+        <!-- Layer 3: 操作ロジック本体 -->
+        <com.google.android.material.bottomnavigation.BottomNavigationView
+            android:id="@+id/bottomNavigation"
+            style="@style/BulgeBottomNavigation"
+            android:layout_width="match_parent"
+            android:layout_height="140dp"
+            android:layout_gravity="bottom"
+            android:background="@android:color/transparent"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:elevation="20dp"
+            android:translationZ="20dp"
+            app:backgroundTint="@android:color/transparent"
+            app:itemIconTint="@color/selector_nav_color"
+            app:itemPaddingBottom="16dp"
+            app:itemPaddingTop="44dp"
+            app:itemTextColor="@color/selector_nav_color"
+            app:labelVisibilityMode="labeled"
+            app:menu="@menu/bottom_nav_menu" />
+    </FrameLayout>
 
 </LinearLayout>
