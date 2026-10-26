@@ -23,6 +23,7 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import jp.cura.savetime.R
 import jp.cura.savetime.limiter.FlexibleUsageLimitManager
+import jp.cura.savetime.tracker.TimelineGraphCalculator
 import jp.cura.savetime.util.CuraMessageCatalog
 import java.util.Locale
 import kotlin.math.abs
@@ -78,6 +79,9 @@ class CuraOverlayManager(private val context: Context) {
     private var lastAppMinutes: Long = 0L
     private var lastScreenMinutes: Long = 0L
     private var lastRemainingBudget: Long = 30L
+    private var lastTodayAppSeconds: Long = 0L
+    private var lastContinuousScreenSeconds: Long = 0L
+    private var lastTodayTotalPhoneSeconds: Long = 0L
 
     fun canDrawOverlay(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -184,12 +188,21 @@ class CuraOverlayManager(private val context: Context) {
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     if (!isDragging && event.action == MotionEvent.ACTION_UP) {
-                        // タップ時: タップ用メッセージを表示して吹き出し開閉（位置は一切動かさない）
+                        // タップ時: 1日のアプリ累計・画面連続・1日のスマホ累計とタップ用メッセージを表示して吹き出し開閉
+                        val appDayStr = TimelineGraphCalculator.formatDurationClean(lastTodayAppSeconds)
+                        val screenContStr = TimelineGraphCalculator.formatDurationClean(lastContinuousScreenSeconds)
+                        val phoneDayStr = TimelineGraphCalculator.formatDurationClean(lastTodayTotalPhoneSeconds)
+                        tvBalloonContinuousDuration?.text =
+                            "1日のアプリ累計: $appDayStr\n画面連続: $screenContStr\n1日のスマホ累計: $phoneDayStr"
+
                         tvBalloonDialogue?.text = messageCatalog.formatTapMessage(
                             appName = lastAppName,
-                            appMinutes = lastAppMinutes,
+                            appMinutes = lastTodayAppSeconds / 60L,
                             screenMinutes = lastScreenMinutes,
-                            remainingBudgetMinutes = lastRemainingBudget
+                            remainingBudgetMinutes = lastRemainingBudget,
+                            todayAppSeconds = lastTodayAppSeconds,
+                            continuousScreenSeconds = lastContinuousScreenSeconds,
+                            todayTotalPhoneSeconds = lastTodayTotalPhoneSeconds
                         )
                         toggleBalloon()
                     }
@@ -401,6 +414,8 @@ class CuraOverlayManager(private val context: Context) {
         appName: String,
         continuousDurationMs: Long,
         totalScreenDurationMs: Long,
+        todayAppDurationSec: Long = continuousDurationMs / 1000L,
+        todayTotalPhoneDurationSec: Long = maxOf(todayAppDurationSec, totalScreenDurationMs / 1000L),
         isBuffer: Boolean,
         isGhostMode: Boolean = false
     ) {
@@ -410,9 +425,8 @@ class CuraOverlayManager(private val context: Context) {
             applyGhostModeState(isGhostMode)
 
             val appMinutes = continuousDurationMs / (60 * 1000L)
-            val appSeconds = (continuousDurationMs / 1000L) % 60
+            val screenSecondsTotal = totalScreenDurationMs / 1000L
             val screenMinutes = totalScreenDurationMs / (60 * 1000L)
-            val screenSeconds = (totalScreenDurationMs / 1000L) % 60
 
             val activeRule = limitManager.getActiveRule()
             val effectiveMinutes = maxOf(appMinutes, screenMinutes)
@@ -423,12 +437,19 @@ class CuraOverlayManager(private val context: Context) {
             lastAppMinutes = appMinutes
             lastScreenMinutes = screenMinutes
             lastRemainingBudget = remainingBudget
+            lastTodayAppSeconds = todayAppDurationSec
+            lastContinuousScreenSeconds = screenSecondsTotal
+            lastTodayTotalPhoneSeconds = todayTotalPhoneDurationSec
 
             val modeSuffix = if (isGhostMode) " [透過]" else ""
+            val appDayStr = TimelineGraphCalculator.formatDurationClean(todayAppDurationSec)
+            val screenContStr = TimelineGraphCalculator.formatDurationClean(screenSecondsTotal)
+            val phoneDayStr = TimelineGraphCalculator.formatDurationClean(todayTotalPhoneDurationSec)
+
             tvBalloonAppName?.text = "$appName$modeSuffix"
             tvBalloonRuleTag?.text = "[${activeRule.name}]"
             tvBalloonContinuousDuration?.text =
-                "アプリ: ${appMinutes}分${appSeconds}秒\n画面連続: ${screenMinutes}分${screenSeconds}秒"
+                "1日のアプリ累計: $appDayStr\n画面連続: $screenContStr\n1日のスマホ累計: $phoneDayStr"
             tvBalloonBudgetRemaining?.text = "1時間の残枠: ${remainingBudget}分"
 
             if (isExceeded) {
@@ -458,7 +479,10 @@ class CuraOverlayManager(private val context: Context) {
                             appName = appName,
                             appMinutes = appMinutes,
                             screenMinutes = screenMinutes,
-                            remainingBudgetMinutes = remainingBudget
+                            remainingBudgetMinutes = remainingBudget,
+                            todayAppSeconds = todayAppDurationSec,
+                            continuousScreenSeconds = screenSecondsTotal,
+                            todayTotalPhoneSeconds = todayTotalPhoneDurationSec
                         )
                     )
                 }
@@ -468,7 +492,10 @@ class CuraOverlayManager(private val context: Context) {
                             appName = appName,
                             appMinutes = appMinutes,
                             screenMinutes = screenMinutes,
-                            remainingBudgetMinutes = remainingBudget
+                            remainingBudgetMinutes = remainingBudget,
+                            todayAppSeconds = todayAppDurationSec,
+                            continuousScreenSeconds = screenSecondsTotal,
+                            todayTotalPhoneSeconds = todayTotalPhoneDurationSec
                         )
                     )
                 }

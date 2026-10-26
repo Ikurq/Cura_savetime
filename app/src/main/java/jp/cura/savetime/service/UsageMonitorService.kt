@@ -170,7 +170,13 @@ class UsageMonitorService : Service() {
                 broadcastState()
 
                 val session = tracker.getCurrentSession()
+                val recentOrActive = tracker.getMostRecentOrActiveApp()
+                val targetPkg = session?.packageName ?: recentOrActive?.first
+                val targetAppName = session?.appName ?: recentOrActive?.second ?: "待機中"
                 val totalScreenMs = tracker.getTotalContinuousScreenDurationMs(now)
+                val todayAppSec = tracker.getTodayAppUsageSeconds(targetPkg, now)
+                val todayTotalPhoneSec = tracker.getTodayTotalPhoneUsageSeconds(now)
+
                 if (shouldReloadMessageCatalog) {
                     shouldReloadMessageCatalog = false
                     overlayManager.reloadMessageCatalog()
@@ -186,9 +192,11 @@ class UsageMonitorService : Service() {
                 }
                 overlayManager.updateState(
                     packageName = session?.packageName,
-                    appName = session?.appName ?: "待機中",
+                    appName = targetAppName,
                     continuousDurationMs = session?.continuousDurationMs ?: 0L,
                     totalScreenDurationMs = totalScreenMs,
+                    todayAppDurationSec = todayAppSec,
+                    todayTotalPhoneDurationSec = todayTotalPhoneSec,
                     isBuffer = session?.isBufferActive ?: false,
                     isGhostMode = isGhost
                 )

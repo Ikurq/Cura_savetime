@@ -75,4 +75,23 @@ class CuraMessageCatalogTest {
             parsed.formatScreenIntervalMessage("YouTube", 5L, 20L, 10L)
         )
     }
+
+    @Test
+    fun testFormatTapMessage_includesTodayAppContinuousScreenAndTodayPhoneTotals() {
+        val catalog = CuraMessageCatalog.defaultCatalog()
+        val tapMsg = catalog.formatTapMessage(
+            appName = "YouTube",
+            appMinutes = 45L,
+            screenMinutes = 20L,
+            remainingBudgetMinutes = 10L,
+            todayAppSeconds = 2715L,         // 45分15秒
+            continuousScreenSeconds = 1205L, // 20分5秒
+            todayTotalPhoneSeconds = 7500L   // 2時間5分
+        )
+
+        assertTrue(tapMsg.contains("YouTube"))
+        assertTrue(tapMsg.contains("45分15秒"))
+        assertTrue(tapMsg.contains("20分5秒"))
+        assertTrue(tapMsg.contains("2時間5分"))
+    }
 }

@@ -108,8 +108,8 @@
     ]
   },
   "tapMessages": [
-    "えへへ、呼びましたか？今は{app}を{appMin}分、連続{screenMin}分ですよっ！（残枠{remain}分）",
-    "ひょこっ！{app}を{appMin}分、合計{screenMin}分使ってます！マスター、無理しないでね！",
-    "はーいっ！{app}が{appMin}分、画面全体で{screenMin}分経過中です！適度に休憩しましょうね〜！"
+    "えへへ、呼びましたか？今日の{app}累計は{appDay}、画面連続{screenCont}、1日のスマホ累計は{phoneDay}ですよっ！",
+    "ひょこっ！{app}の1日累計が{appDay}、画面連続{screenCont}、今日のスマホ累計は{phoneDay}です！無理しないでね！",
+    "はーいっ！本日{app}を累計{appDay}、画面連続{screenCont}、スマホ全体で1日累計{phoneDay}使ってますよ〜！"
   ]
 }

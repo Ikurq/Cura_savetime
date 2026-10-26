@@ -146,4 +146,41 @@ class UsageSessionTrackerTest {
         }
         assertEquals(1_000L, tracker.getCurrentSession()?.continuousDurationMs)
     }
+
+    @Test
+    fun testTodayAppAndPhoneUsageSeconds_accumulatesAcrossHoursWithinSameDay() {
+        val startOfDayMs = TimelineGraphCalculator.getStartOfDayMs(1_700_000_000_000L)
+        var now = startOfDayMs + 10 * 3600_000L // 10:00:00
+
+        // 10:00 から YouTube を 300秒（5分）使用
+        tracker.onAppForeground("com.google.android.youtube", "YouTube", now)
+        for (i in 1..300) {
+            now += 1000L
+            tracker.onTick(now)
+        }
+
+        // 10:05 から Chrome を 180秒（3分）使用
+        tracker.onAppForeground("com.android.chrome", "Chrome", now)
+        for (i in 1..180) {
+            now += 1000L
+            tracker.onTick(now)
+        }
+
+        // 次の時間帯（11:10:00）にジャンプして再び YouTube を 120秒（2分）使用
+        now = startOfDayMs + 11 * 3600_000L + 600_000L
+        tracker.onAppForeground("com.google.android.youtube", "YouTube", now)
+        for (i in 1..120) {
+            now += 1000L
+            tracker.onTick(now)
+        }
+
+        // 1日のアプリ累計（YouTube）= 300s + 120s = 420s
+        assertEquals(420L, tracker.getTodayAppUsageSeconds("com.google.android.youtube", now))
+        // 1日のアプリ累計（Chrome）= 180s
+        assertEquals(180L, tracker.getTodayAppUsageSeconds("com.android.chrome", now))
+        // 画面連続（11:10からの連続）= 120s
+        assertEquals(120_000L, tracker.getTotalContinuousScreenDurationMs(now))
+        // 1日の累計スマホ使用時間 = 300s + 180s + 120s = 600s
+        assertEquals(600L, tracker.getTodayTotalPhoneUsageSeconds(now))
+    }
 }

@@ -1,6 +1,7 @@
 package jp.cura.savetime.util
 
 import android.content.Context
+import jp.cura.savetime.tracker.TimelineGraphCalculator
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -9,10 +10,14 @@ import kotlinx.serialization.json.Json
  * 他のAIにセリフを生成させてそのまま流し込めるメッセージ枠定義（JSONシリアライズ対応）
  *
  * 使用可能なプレースホルダー:
- * - {app}       : 現在開いているアプリ名（例: YouTube, X）
- * - {appMin}    : そのアプリの累計使用分数（例: 5, 10, 15...）
- * - {screenMin} : スマホ画面全体の連続操作分数（例: 5, 10, 15...）
- * - {remain}    : 1時間あたりの残り予算分数（例: 20）
+ * - {app}        : 現在開いているアプリ名（例: YouTube, X）
+ * - {appDay}     : そのアプリの1日累計使用時間（例: 25分10秒 / 1時間15分）
+ * - {screenCont} : 画面連続使用時間（例: 15分20秒）
+ * - {phoneDay}   : 1日の累計スマホ使用時間（例: 2時間30分）
+ * - {appMin}     : そのアプリの累計使用分数（例: 5, 10, 15...）
+ * - {screenMin}  : スマホ画面全体の連続操作分数（例: 5, 10, 15...）
+ * - {todayMin}   : 1日の累計スマホ使用分数（例: 120）
+ * - {remain}     : 1時間あたりの残り予算分数（例: 20）
  */
 @Serializable
 data class CuraMessageCatalogData(
@@ -27,7 +32,10 @@ class CuraMessageCatalog(val data: CuraMessageCatalogData) {
         appName: String,
         appMinutes: Long,
         screenMinutes: Long,
-        remainingBudgetMinutes: Long
+        remainingBudgetMinutes: Long,
+        todayAppSeconds: Long = appMinutes * 60L,
+        continuousScreenSeconds: Long = screenMinutes * 60L,
+        todayTotalPhoneSeconds: Long = maxOf(todayAppSeconds, continuousScreenSeconds)
     ): String {
         val candidates = data.appIntervalMessages[appMinutes.toString()]
             ?.takeIf { it.isNotEmpty() }
@@ -35,14 +43,26 @@ class CuraMessageCatalog(val data: CuraMessageCatalogData) {
             ?: listOf("[アプリ${appMinutes}分枠] {app} の使用が {appMin}分 経過しました。")
 
         val template = candidates.random()
-        return applyPlaceholders(template, appName, appMinutes, screenMinutes, remainingBudgetMinutes)
+        return applyPlaceholders(
+            template = template,
+            appName = appName,
+            appMinutes = appMinutes,
+            screenMinutes = screenMinutes,
+            remainingBudgetMinutes = remainingBudgetMinutes,
+            todayAppSeconds = todayAppSeconds,
+            continuousScreenSeconds = continuousScreenSeconds,
+            todayTotalPhoneSeconds = todayTotalPhoneSeconds
+        )
     }
 
     fun formatScreenIntervalMessage(
         appName: String,
         appMinutes: Long,
         screenMinutes: Long,
-        remainingBudgetMinutes: Long
+        remainingBudgetMinutes: Long,
+        todayAppSeconds: Long = appMinutes * 60L,
+        continuousScreenSeconds: Long = screenMinutes * 60L,
+        todayTotalPhoneSeconds: Long = maxOf(todayAppSeconds, continuousScreenSeconds)
     ): String {
         val candidates = data.screenIntervalMessages[screenMinutes.toString()]
             ?.takeIf { it.isNotEmpty() }
@@ -50,19 +70,40 @@ class CuraMessageCatalog(val data: CuraMessageCatalogData) {
             ?: listOf("[画面連続${screenMinutes}分枠] スマホ全体の連続使用が {screenMin}分 経過しました。")
 
         val template = candidates.random()
-        return applyPlaceholders(template, appName, appMinutes, screenMinutes, remainingBudgetMinutes)
+        return applyPlaceholders(
+            template = template,
+            appName = appName,
+            appMinutes = appMinutes,
+            screenMinutes = screenMinutes,
+            remainingBudgetMinutes = remainingBudgetMinutes,
+            todayAppSeconds = todayAppSeconds,
+            continuousScreenSeconds = continuousScreenSeconds,
+            todayTotalPhoneSeconds = todayTotalPhoneSeconds
+        )
     }
 
     fun formatTapMessage(
         appName: String,
         appMinutes: Long,
         screenMinutes: Long,
-        remainingBudgetMinutes: Long
+        remainingBudgetMinutes: Long,
+        todayAppSeconds: Long = appMinutes * 60L,
+        continuousScreenSeconds: Long = screenMinutes * 60L,
+        todayTotalPhoneSeconds: Long = maxOf(todayAppSeconds, continuousScreenSeconds)
     ): String {
         val candidates = data.tapMessages.takeIf { it.isNotEmpty() }
-            ?: listOf("監視中：{app}（{appMin}分） / 画面連続 {screenMin}分")
+            ?: listOf("今日の{app}累計は{appDay}、画面連続{screenCont}、1日のスマホ累計は{phoneDay}ですよっ！")
         val template = candidates.random()
-        return applyPlaceholders(template, appName, appMinutes, screenMinutes, remainingBudgetMinutes)
+        return applyPlaceholders(
+            template = template,
+            appName = appName,
+            appMinutes = appMinutes,
+            screenMinutes = screenMinutes,
+            remainingBudgetMinutes = remainingBudgetMinutes,
+            todayAppSeconds = todayAppSeconds,
+            continuousScreenSeconds = continuousScreenSeconds,
+            todayTotalPhoneSeconds = todayTotalPhoneSeconds
+        )
     }
 
     private fun applyPlaceholders(
@@ -70,12 +111,24 @@ class CuraMessageCatalog(val data: CuraMessageCatalogData) {
         appName: String,
         appMinutes: Long,
         screenMinutes: Long,
-        remainingBudgetMinutes: Long
+        remainingBudgetMinutes: Long,
+        todayAppSeconds: Long,
+        continuousScreenSeconds: Long,
+        todayTotalPhoneSeconds: Long
     ): String {
+        val appDayStr = TimelineGraphCalculator.formatDurationClean(todayAppSeconds)
+        val screenContStr = TimelineGraphCalculator.formatDurationClean(continuousScreenSeconds)
+        val phoneDayStr = TimelineGraphCalculator.formatDurationClean(todayTotalPhoneSeconds)
+        val todayMin = todayTotalPhoneSeconds / 60L
+
         return template
             .replace("{app}", appName)
+            .replace("{appDay}", appDayStr)
+            .replace("{screenCont}", screenContStr)
+            .replace("{phoneDay}", phoneDayStr)
             .replace("{appMin}", appMinutes.toString())
             .replace("{screenMin}", screenMinutes.toString())
+            .replace("{todayMin}", todayMin.toString())
             .replace("{remain}", remainingBudgetMinutes.toString())
     }
 
@@ -201,9 +254,9 @@ class CuraMessageCatalog(val data: CuraMessageCatalogData) {
                         )
                     ),
                     tapMessages = listOf(
-                        "えへへ、呼びましたか？今は{app}を{appMin}分、連続{screenMin}分ですよっ！（残枠{remain}分）",
-                        "ひょこっ！{app}を{appMin}分、合計{screenMin}分使ってます！マスター、無理しないでね！",
-                        "はーいっ！{app}が{appMin}分、画面全体で{screenMin}分経過中です！適度に休憩しましょうね〜！"
+                        "えへへ、呼びましたか？今日の{app}累計は{appDay}、画面連続{screenCont}、1日のスマホ累計は{phoneDay}ですよっ！",
+                        "ひょこっ！{app}の1日累計が{appDay}、画面連続{screenCont}、今日のスマホ累計は{phoneDay}です！無理しないでね！",
+                        "はーいっ！本日{app}を累計{appDay}、画面連続{screenCont}、スマホ全体で1日累計{phoneDay}使ってますよ〜！"
                     )
                 )
             )
@@ -271,10 +324,13 @@ class CuraMessageCatalog(val data: CuraMessageCatalogData) {
 ・性格・口調：（例：ダウナー系で少し呆れつつも心配してくれる後輩 / クールな秘書 / 毒舌な相棒 など）
 
 【利用可能な変数（プレースホルダー）】
-・{app}       : 現在使っているアプリ名（例: YouTube, X）
-・{appMin}    : そのアプリの累計使用分数（5, 10, 15...）
-・{screenMin} : スマホ全体の連続操作分数（5, 10, 15...）
-・{remain}    : 1時間あたりの残り予算分数（0〜30）
+・{app}        : 現在使っているアプリ名（例: YouTube, X）
+・{appDay}     : そのアプリの1日累計使用時間（例: 25分10秒 / 1時間15分）
+・{screenCont} : 画面連続使用時間（例: 15分20秒）
+・{phoneDay}   : 1日の累計スマホ使用時間（例: 2時間30分）
+・{appMin}     : そのアプリの累計使用分数（5, 10, 15...）
+・{screenMin}  : スマホ全体の連続操作分数（5, 10, 15...）
+・{remain}     : 1時間あたりの残り予算分数（0〜30）
 
 【出力形式】
 解説は不要です。以下のJSON形式のコードブロックのみをそのまま出力してください（各分数キーに1〜3個ずつバリエーションを入れてください）。
@@ -312,7 +368,7 @@ class CuraMessageCatalog(val data: CuraMessageCatalogData) {
     "default": ["スマホ連続{screenMin}分経過。"]
   },
   "tapMessages": [
-    "今は{app}を{appMin}分、画面全体で{screenMin}分使ってるよ（残枠{remain}分）。"
+    "今日の{app}累計は{appDay}、画面連続{screenCont}、1日のスマホ累計は{phoneDay}だよ（残枠{remain}分）。"
   ]
 }
 ```

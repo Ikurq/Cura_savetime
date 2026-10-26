@@ -148,6 +148,10 @@ class MainActivity : AppCompatActivity() {
             triggerThirtySecondBlock()
         }
 
+        binding.tvHeroCuraMessage.setOnClickListener {
+            showTapSummaryInHero()
+        }
+
         binding.btnQuickBlock30s.setOnClickListener {
             triggerThirtySecondBlock()
         }
@@ -546,13 +550,16 @@ class MainActivity : AppCompatActivity() {
         binding.timelineGraphView.setTimelineData(timeline)
 
         val session = UsageMonitorService.tracker.getCurrentSession()
+        val recentOrActive = UsageMonitorService.tracker.getMostRecentOrActiveApp()
+        val targetPkg = session?.packageName ?: recentOrActive?.first
+        val targetAppName = session?.appName ?: recentOrActive?.second
         val totalScreenMs = UsageMonitorService.tracker.getTotalContinuousScreenDurationMs()
         val screenSec = totalScreenMs / 1000L
         val screenContinuityStr = formatHms(screenSec)
 
-        // Calculate today's total usage time from 24h timeline + active session
-        val timelineTotalSec = binding.timelineGraphView.getAppSummaries().sumOf { it.totalSeconds.toLong() }
-        val todayTotalSec = maxOf(timelineTotalSec, screenSec)
+        // Calculate today's total phone usage time & today's app cumulative usage time
+        val todayAppSec = UsageMonitorService.tracker.getTodayAppUsageSeconds(targetPkg)
+        val todayTotalSec = UsageMonitorService.tracker.getTodayTotalPhoneUsageSeconds()
         binding.tvTodayTotalTimer.text = formatHms(todayTotalSec)
 
         // Hourly budget progress (target: 30 min = 1800s per hour)
@@ -571,56 +578,75 @@ class MainActivity : AppCompatActivity() {
         binding.progressHourlyGoal.progressTintList = ColorStateList.valueOf(progressColor)
 
         if (session != null && !session.isBufferActive) {
-            binding.tvActiveAppName.text = "現在: ${session.appName}"
+            binding.tvActiveAppName.text = "${session.appName} (1日累計)"
             binding.btnExcludeCurrentApp.visibility = View.VISIBLE
             binding.btnExcludeCurrentApp.text = "設定"
 
-            val activeSec = session.continuousDurationMs / 1000L
-            binding.tvContinuousTimer.text = formatHms(activeSec)
-            binding.tvBufferStatus.text = "[ 計測中 // 連続 $screenContinuityStr ]"
+            binding.tvContinuousTimer.text = formatHms(todayAppSec)
+            binding.tvBufferStatus.text = "[ 画面連続: $screenContinuityStr ]"
             binding.tvBufferStatus.setTextColor(ContextCompat.getColor(this, R.color.accent_lime))
         } else if (session != null && session.isBufferActive) {
-            binding.tvActiveAppName.text = "現在: ${session.appName} (一時中断)"
+            binding.tvActiveAppName.text = "${session.appName} (1日累計 / 中断)"
             binding.btnExcludeCurrentApp.visibility = View.VISIBLE
             binding.btnExcludeCurrentApp.text = "設定"
 
-            val activeSec = session.continuousDurationMs / 1000L
-            binding.tvContinuousTimer.text = formatHms(activeSec)
-            binding.tvBufferStatus.text = "[ 中断中 // 連続 $screenContinuityStr ]"
+            binding.tvContinuousTimer.text = formatHms(todayAppSec)
+            binding.tvBufferStatus.text = "[ 画面連続: $screenContinuityStr ]"
             binding.tvBufferStatus.setTextColor(ContextCompat.getColor(this, R.color.accent_cyan))
+        } else if (targetAppName != null && todayAppSec > 0L) {
+            binding.tvActiveAppName.text = "直近: $targetAppName (1日累計)"
+            binding.btnExcludeCurrentApp.visibility = View.GONE
+            binding.tvContinuousTimer.text = formatHms(todayAppSec)
+            binding.tvBufferStatus.text = if (screenSec > 0) "[ 画面連続: $screenContinuityStr ]" else "[ 監視待機中 ]"
+            binding.tvBufferStatus.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
         } else {
             binding.tvActiveAppName.text = "現在: 待機中 (別アプリを開くと計測)"
             binding.btnExcludeCurrentApp.visibility = View.GONE
             binding.tvContinuousTimer.text = "00:00:00"
-            binding.tvBufferStatus.text = if (screenSec > 0) "[ 連続操作 $screenContinuityStr ]" else "[ 監視待機中 ]"
+            binding.tvBufferStatus.text = if (screenSec > 0) "[ 画面連続: $screenContinuityStr ]" else "[ 監視待機中 ]"
             binding.tvBufferStatus.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
         }
 
-        updateHeroAssistantMessage(session?.appName, budgetUsedSec / 60L, todayTotalSec / 60L)
+        updateHeroAssistantMessage(targetAppName, todayAppSec, screenSec, todayTotalSec)
         renderTimelineList()
         renderRankingList()
         renderExclusionsList()
         renderGhostAppsList()
     }
 
-    private fun updateHeroAssistantMessage(activeAppName: String?, continuousMin: Long, todayTotalMin: Long) {
-        val topSummary = binding.timelineGraphView.getAppSummaries().firstOrNull()
-        val targetApp = activeAppName ?: topSummary?.appName ?: "スマホ"
-        val remainMin = (30L - continuousMin).coerceAtLeast(0L)
+    private fun showTapSummaryInHero() {
+        val recentOrActive = UsageMonitorService.tracker.getMostRecentOrActiveApp()
+        val appName = recentOrActive?.second ?: "スマホ"
+        val todayAppSec = UsageMonitorService.tracker.getTodayAppUsageSeconds(recentOrActive?.first)
+        val screenSec = UsageMonitorService.tracker.getTotalContinuousScreenDurationMs() / 1000L
+        val todayTotalSec = UsageMonitorService.tracker.getTodayTotalPhoneUsageSeconds()
+        val remainMin = (30L - (screenSec / 60L)).coerceAtLeast(0L)
 
-        val message = when {
-            continuousMin >= 30L ->
-                "マスター、${targetApp}を${continuousMin}分続けて見てますよ！一度「30秒休む」を押して目を休めましょうっ！"
-            continuousMin >= 15L ->
-                "${targetApp}が${continuousMin}分経過です！残り枠はあと${remainMin}分ですよ。キリのいいところで一息つきましょうね。"
-            todayTotalMin >= 120L ->
-                "本日の累計利用は${todayTotalMin / 60}時間${todayTotalMin % 60}分です。${targetApp}の見すぎに気をつけて、こまめに休憩してくださいねっ。"
-            topSummary != null ->
-                "今日は「${topSummary.appName}」の利用が一番多いですよ（${TimelineGraphCalculator.formatDurationClean(topSummary.totalSeconds.toLong())}）。意識してペース配分しましょう！"
-            else ->
-                "マスター、今日もスマホの使いすぎに気をつけて一緒にがんばりましょうねっ！"
-        }
-        binding.tvHeroCuraMessage.text = message
+        val catalog = CuraMessageCatalog.load(this)
+        binding.tvHeroCuraMessage.text = catalog.formatTapMessage(
+            appName = appName,
+            appMinutes = todayAppSec / 60L,
+            screenMinutes = screenSec / 60L,
+            remainingBudgetMinutes = remainMin,
+            todayAppSeconds = todayAppSec,
+            continuousScreenSeconds = screenSec,
+            todayTotalPhoneSeconds = todayTotalSec
+        )
+    }
+
+    private fun updateHeroAssistantMessage(
+        targetAppName: String?,
+        todayAppSec: Long,
+        screenSec: Long,
+        todayTotalSec: Long
+    ) {
+        val appName = targetAppName ?: "スマホ"
+        val appDayStr = TimelineGraphCalculator.formatDurationClean(todayAppSec)
+        val screenContStr = TimelineGraphCalculator.formatDurationClean(screenSec)
+        val phoneDayStr = TimelineGraphCalculator.formatDurationClean(todayTotalSec)
+
+        binding.tvHeroCuraMessage.text =
+            "【${appName}】1日累計: $appDayStr / 画面連続: $screenContStr / 1日のスマホ累計: $phoneDayStr"
     }
 
     private fun renderTimelineList() {

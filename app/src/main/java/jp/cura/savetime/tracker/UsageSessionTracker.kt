@@ -66,6 +66,46 @@ class UsageSessionTracker(
     }
 
     /**
+     * 現在アクティブなアプリ、または直近に開いていたアプリの (packageName, appName) を返す
+     */
+    fun getMostRecentOrActiveApp(): Pair<String, String>? {
+        val current = getCurrentSession()
+        if (current != null && !ignoredPackages.contains(current.packageName)) {
+            return current.packageName to current.appName
+        }
+        val latestTimeline = getTimeline().firstOrNull()
+        if (latestTimeline != null) {
+            return latestTimeline.packageName to latestTimeline.appName
+        }
+        return null
+    }
+
+    /**
+     * 指定したアプリの「当日（00:00〜現在）の1日累計使用秒数」を算出する（1時間リセットを跨いで累積）
+     */
+    fun getTodayAppUsageSeconds(packageName: String?, now: Long = System.currentTimeMillis()): Long {
+        if (packageName.isNullOrBlank() || ignoredPackages.contains(packageName)) return 0L
+        val startOfDayMs = TimelineGraphCalculator.getStartOfDayMs(now)
+        val dayBars = TimelineGraphCalculator.buildDayBars(getTimeline(), startOfDayMs)
+        val timelineAppSec = dayBars
+            .filter { it.packageName == packageName }
+            .sumOf { it.durationSeconds }
+        val activeSessionSec = (activeSessions[packageName]?.continuousDurationMs ?: 0L) / 1000L
+        return maxOf(timelineAppSec, activeSessionSec)
+    }
+
+    /**
+     * スマホ全体の「当日（00:00〜現在）の1日累計使用秒数」を算出する（全アプリの当日合計）
+     */
+    fun getTodayTotalPhoneUsageSeconds(now: Long = System.currentTimeMillis()): Long {
+        val startOfDayMs = TimelineGraphCalculator.getStartOfDayMs(now)
+        val dayBars = TimelineGraphCalculator.buildDayBars(getTimeline(), startOfDayMs)
+        val timelineTotalSec = dayBars.sumOf { it.durationSeconds }
+        val continuousScreenSec = getTotalContinuousScreenDurationMs(now) / 1000L
+        return maxOf(timelineTotalSec, continuousScreenSec)
+    }
+
+    /**
      * 確定済みレコードと現在進行中のセッションを統合したランキングリストを取得
      */
     fun getRecords(): List<ContinuousRecord> {
