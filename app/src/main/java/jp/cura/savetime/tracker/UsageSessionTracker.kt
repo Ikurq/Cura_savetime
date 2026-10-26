@@ -350,8 +350,11 @@ class UsageSessionTracker(
             return
         }
         if (bucket != currentHourBucket) {
+            val currentPkg = currentActivePackage
+            val lastActive = if (currentPkg != null) activeSessions[currentPkg]?.lastActiveAtMs ?: timestampMs else timestampMs
+            val resetEndMs = if (timestampMs - lastActive > 5_000L) lastActive else timestampMs
             currentHourBucket = bucket
-            resetAllSessions(timestampMs)
+            resetAllSessions(resetEndMs)
             screenSessionStartedAtMs = timestampMs
         }
     }

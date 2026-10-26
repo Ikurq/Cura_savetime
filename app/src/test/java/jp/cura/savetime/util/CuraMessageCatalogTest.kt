@@ -92,6 +92,6 @@ class CuraMessageCatalogTest {
         assertTrue(tapMsg.contains("YouTube"))
         assertTrue(tapMsg.contains("45分15秒"))
         assertTrue(tapMsg.contains("20分5秒"))
-        assertTrue(tapMsg.contains("2時間5分"))
+        assertTrue(tapMsg.contains("2時間05分"))
     }
 }
