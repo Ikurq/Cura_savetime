@@ -94,4 +94,38 @@ class CuraMessageCatalogTest {
         assertTrue(tapMsg.contains("20分5秒"))
         assertTrue(tapMsg.contains("2時間05分"))
     }
+
+    @Test
+    fun testFormatBalloonTapMessage_switchesBetweenShortAndDetailedMessages() {
+        val catalog = CuraMessageCatalog.defaultCatalog()
+
+        val collapsedMsg = catalog.formatBalloonTapMessage(
+            isDetailsExpanded = false,
+            appName = "Chrome",
+            appMinutes = 33L,
+            screenMinutes = 33L,
+            remainingBudgetMinutes = 0L,
+            todayAppSeconds = 2027L,
+            continuousScreenSeconds = 2027L,
+            todayTotalPhoneSeconds = 5400L
+        )
+        // 閉じている時（通常時）は数字を含まない短いメッセージであること
+        assertTrue(collapsedMsg.none { it.isDigit() })
+
+        val expandedMsg = catalog.formatBalloonTapMessage(
+            isDetailsExpanded = true,
+            appName = "Chrome",
+            appMinutes = 33L,
+            screenMinutes = 33L,
+            remainingBudgetMinutes = 0L,
+            todayAppSeconds = 2027L,         // 33分47秒
+            continuousScreenSeconds = 1210L, // 20分10秒
+            todayTotalPhoneSeconds = 5400L   // 1時間30分
+        )
+        // 開いている時は3つの時間（appDay, screenCont, phoneDay）を含む詳細メッセージであること
+        assertTrue(expandedMsg.contains("Chrome"))
+        assertTrue(expandedMsg.contains("33分47秒"))
+        assertTrue(expandedMsg.contains("20分10秒"))
+        assertTrue(expandedMsg.contains("1時間30分"))
+    }
 }

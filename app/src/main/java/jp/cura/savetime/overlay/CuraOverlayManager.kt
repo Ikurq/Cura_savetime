@@ -9,6 +9,8 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.transition.AutoTransition
+import android.transition.TransitionManager
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.LayoutInflater
@@ -30,7 +32,9 @@ import kotlin.math.abs
 
 /**
  * 画面端からCuraが覗き込む常駐オーバーレイマネージャー
- * - アプリ別 5分ごと / 画面全体 5分ごとのメッセージ枠表示
+ * - 2段階開閉（アコーディオン）形式の吹き出しUI
+ *   - デフォルト（閉）: ヘッダー、アプリ名＋画面連続時間＋[▼詳細]、短い通常セリフ、30秒ブロックボタン
+ *   - 詳細展開（開）: 1日のアプリ累計、1日のスマホ累計、1時間の残枠/警告 ＋ 3つの時間を読み上げる詳細セリフ
  * - ゲーム・指定アプリでの「半透明＋当たり判定なし（FLAG_NOT_TOUCHABLE）」モード切り替え
  * - 吹き出し内の行動ボタン押下による「30秒フルスクリーン画面ブロック」機能
  */
@@ -45,8 +49,13 @@ class CuraOverlayManager(private val context: Context) {
     private var params: WindowManager.LayoutParams? = null
 
     private var layoutBalloon: LinearLayout? = null
+    private var layoutBalloonSummaryRow: LinearLayout? = null
+    private var layoutBalloonDetails: LinearLayout? = null
     private var tvBalloonAppName: TextView? = null
     private var tvBalloonContinuousDuration: TextView? = null
+    private var tvBalloonDetailToggle: TextView? = null
+    private var tvBalloonAppDayTotal: TextView? = null
+    private var tvBalloonPhoneDayTotal: TextView? = null
     private var tvBalloonDialogue: TextView? = null
     private var tvBalloonBudgetRemaining: TextView? = null
     private var tvBalloonRuleTag: TextView? = null
@@ -72,6 +81,7 @@ class CuraOverlayManager(private val context: Context) {
     }
 
     private var isBalloonVisible = false
+    private var isDetailsExpanded = false
     private var currentGhostMode = false
     private val autoHideRunnable = Runnable { hideBalloon() }
 
@@ -104,8 +114,13 @@ class CuraOverlayManager(private val context: Context) {
         overlayView = view
 
         layoutBalloon = view.findViewById(R.id.layoutBalloon)
+        layoutBalloonSummaryRow = view.findViewById(R.id.layoutBalloonSummaryRow)
+        layoutBalloonDetails = view.findViewById(R.id.layoutBalloonDetails)
         tvBalloonAppName = view.findViewById(R.id.tvBalloonAppName)
         tvBalloonContinuousDuration = view.findViewById(R.id.tvBalloonContinuousDuration)
+        tvBalloonDetailToggle = view.findViewById(R.id.tvBalloonDetailToggle)
+        tvBalloonAppDayTotal = view.findViewById(R.id.tvBalloonAppDayTotal)
+        tvBalloonPhoneDayTotal = view.findViewById(R.id.tvBalloonPhoneDayTotal)
         tvBalloonDialogue = view.findViewById(R.id.tvBalloonDialogue)
         tvBalloonBudgetRemaining = view.findViewById(R.id.tvBalloonBudgetRemaining)
         tvBalloonRuleTag = view.findViewById(R.id.tvBalloonRuleTag)
@@ -113,6 +128,17 @@ class CuraOverlayManager(private val context: Context) {
         btnBalloonBlock30s = view.findViewById(R.id.btnBalloonBlock30s)
         layoutSideHandle = view.findViewById(R.id.layoutSideHandle)
         ivCuraPeeking = view.findViewById(R.id.ivCuraPeeking)
+
+        // 吹き出し本体または [▼詳細] サマリ行・セリフ枠のタップで詳細アコーディオンを開閉
+        val detailsToggleListener = View.OnClickListener {
+            if (!currentGhostMode) {
+                toggleBalloonDetails()
+            }
+        }
+        layoutBalloon?.setOnClickListener(detailsToggleListener)
+        layoutBalloonSummaryRow?.setOnClickListener(detailsToggleListener)
+        tvBalloonDetailToggle?.setOnClickListener(detailsToggleListener)
+        tvBalloonDialogue?.setOnClickListener(detailsToggleListener)
 
         btnBalloonBlock30s?.setOnClickListener {
             startThirtySecondBlock(30)
@@ -139,6 +165,48 @@ class CuraOverlayManager(private val context: Context) {
 
         setupTouchHandling(view, layoutParams)
         windowManager.addView(view, layoutParams)
+    }
+
+    /**
+     * 吹き出し内の詳細データ枠（VISIBLE / GONE）をアニメーション付きでトグルし、
+     * 開閉状態に応じてセリフ枠を「3つの時間を読み上げる詳細セリフ」と「数字を含まない短い通常セリフ」に切り替える
+     */
+    private fun toggleBalloonDetails() {
+        setDetailsExpanded(expanded = !isDetailsExpanded, animate = true)
+        updateDialogueForDetailsState()
+        // 詳細を開いた時はじっくり読めるよう自動非表示タイマーを延長
+        showBalloon(autoHideSec = if (isDetailsExpanded) 12 else 8)
+    }
+
+    private fun setDetailsExpanded(expanded: Boolean, animate: Boolean) {
+        isDetailsExpanded = expanded
+        if (animate) {
+            layoutBalloon?.let { container ->
+                val transition = AutoTransition().apply {
+                    duration = 180L
+                }
+                TransitionManager.beginDelayedTransition(container, transition)
+            }
+        }
+        layoutBalloonDetails?.visibility = if (expanded) View.VISIBLE else View.GONE
+        tvBalloonDetailToggle?.text = if (expanded) "[▲詳細]" else "[▼詳細]"
+    }
+
+    /**
+     * 詳細が開いている時は「3つの時間（appDay, phoneDay, screenCont）を読み上げる詳細メッセージ」、
+     * 閉じている時（通常時）は「数字を含まない短いメッセージ」にセリフ枠を設定する
+     */
+    private fun updateDialogueForDetailsState() {
+        tvBalloonDialogue?.text = messageCatalog.formatBalloonTapMessage(
+            isDetailsExpanded = isDetailsExpanded,
+            appName = lastAppName,
+            appMinutes = lastTodayAppSeconds / 60L,
+            screenMinutes = lastScreenMinutes,
+            remainingBudgetMinutes = lastRemainingBudget,
+            todayAppSeconds = lastTodayAppSeconds,
+            continuousScreenSeconds = lastContinuousScreenSeconds,
+            todayTotalPhoneSeconds = lastTodayTotalPhoneSeconds
+        )
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -188,23 +256,14 @@ class CuraOverlayManager(private val context: Context) {
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     if (!isDragging && event.action == MotionEvent.ACTION_UP) {
-                        // タップ時: 1日のアプリ累計・画面連続・1日のスマホ累計とタップ用メッセージを表示して吹き出し開閉
-                        val appDayStr = TimelineGraphCalculator.formatDurationClean(lastTodayAppSeconds)
-                        val screenContStr = TimelineGraphCalculator.formatDurationClean(lastContinuousScreenSeconds)
-                        val phoneDayStr = TimelineGraphCalculator.formatDurationClean(lastTodayTotalPhoneSeconds)
-                        tvBalloonContinuousDuration?.text =
-                            "1日のアプリ累計: $appDayStr\n画面連続: $screenContStr\n1日のスマホ累計: $phoneDayStr"
-
-                        tvBalloonDialogue?.text = messageCatalog.formatTapMessage(
-                            appName = lastAppName,
-                            appMinutes = lastTodayAppSeconds / 60L,
-                            screenMinutes = lastScreenMinutes,
-                            remainingBudgetMinutes = lastRemainingBudget,
-                            todayAppSeconds = lastTodayAppSeconds,
-                            continuousScreenSeconds = lastContinuousScreenSeconds,
-                            todayTotalPhoneSeconds = lastTodayTotalPhoneSeconds
-                        )
-                        toggleBalloon()
+                        if (isBalloonVisible) {
+                            hideBalloon()
+                        } else {
+                            // デフォルト状態（詳細GONE・短い通常メッセージ）で吹き出しを開く
+                            setDetailsExpanded(expanded = false, animate = false)
+                            updateDialogueForDetailsState()
+                            showBalloon(autoHideSec = 8)
+                        }
                     }
                     true
                 }
@@ -373,18 +432,11 @@ class CuraOverlayManager(private val context: Context) {
             } catch (_: Exception) {}
         }
 
-        // ゴーストモード時はボタンを非表示にして背面を透過、通常時は行動ボタンを表示
+        // ゴーストモード時はボタンや詳細トグルを非表示にして背面を透過、通常時は表示
         btnBalloonBlock30s?.visibility = if (isGhost) View.GONE else View.VISIBLE
+        tvBalloonDetailToggle?.visibility = if (isGhost) View.GONE else View.VISIBLE
         ivCuraPeeking?.alpha = if (isGhost) 0.35f else 1.0f
         layoutBalloon?.alpha = if (isGhost) 0.72f else 0.96f
-    }
-
-    private fun toggleBalloon() {
-        if (isBalloonVisible) {
-            hideBalloon()
-        } else {
-            showBalloon(autoHideSec = 8)
-        }
     }
 
     private fun showBalloon(autoHideSec: Int = 0) {
@@ -399,6 +451,7 @@ class CuraOverlayManager(private val context: Context) {
 
     private fun hideBalloon() {
         mainHandler.removeCallbacks(autoHideRunnable)
+        setDetailsExpanded(expanded = false, animate = false)
         layoutBalloon?.visibility = View.GONE
         isBalloonVisible = false
     }
@@ -406,7 +459,8 @@ class CuraOverlayManager(private val context: Context) {
     /**
      * トラッカーからの状態更新を受け取り、
      * 1) ゲーム等の半透明・当たり判定なしモード制御
-     * 2) アプリ5分ごと・画面5分ごとのメッセージ表示
+     * 2) 常時表示行（アプリ名＋画面連続時間）および詳細枠（1日アプリ累計・1日スマホ累計・残枠/警告）の更新
+     * 3) アプリ5分ごと・画面5分ごとのメッセージ表示
      * を実行する
      */
     fun updateState(
@@ -446,10 +500,14 @@ class CuraOverlayManager(private val context: Context) {
             val screenContStr = TimelineGraphCalculator.formatDurationClean(screenSecondsTotal)
             val phoneDayStr = TimelineGraphCalculator.formatDurationClean(todayTotalPhoneDurationSec)
 
+            // 1. 常時表示要素の更新（ヘッダー、アプリ名、画面連続時間）
             tvBalloonAppName?.text = "$appName$modeSuffix"
             tvBalloonRuleTag?.text = "[${activeRule.name}]"
-            tvBalloonContinuousDuration?.text =
-                "1日のアプリ累計: $appDayStr\n画面連続: $screenContStr\n1日のスマホ累計: $phoneDayStr"
+            tvBalloonContinuousDuration?.text = "画面連続: $screenContStr"
+
+            // 2. タップ開閉する詳細データ枠の更新（1日のアプリ累計、1日のスマホ累計、残枠、上限警告）
+            tvBalloonAppDayTotal?.text = "1日のアプリ累計: $appDayStr"
+            tvBalloonPhoneDayTotal?.text = "1日のスマホ累計: $phoneDayStr"
             tvBalloonBudgetRemaining?.text = "1時間の残枠: ${remainingBudget}分"
 
             if (isExceeded) {
@@ -499,7 +557,12 @@ class CuraOverlayManager(private val context: Context) {
                         )
                     )
                 }
-                tvBalloonDialogue?.text = messages.joinToString("\n")
+                if (!isBalloonVisible) {
+                    setDetailsExpanded(expanded = false, animate = false)
+                }
+                if (!isDetailsExpanded) {
+                    tvBalloonDialogue?.text = messages.joinToString("\n")
+                }
                 // ボタンを押す余裕があるよう10秒間表示（ゲーム透過時は6秒）
                 showBalloon(autoHideSec = if (isGhostMode) 6 else 10)
             }

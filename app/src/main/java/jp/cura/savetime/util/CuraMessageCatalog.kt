@@ -23,7 +23,8 @@ import kotlinx.serialization.json.Json
 data class CuraMessageCatalogData(
     val appIntervalMessages: Map<String, List<String>> = emptyMap(),
     val screenIntervalMessages: Map<String, List<String>> = emptyMap(),
-    val tapMessages: List<String> = emptyList()
+    val tapMessages: List<String> = emptyList(),
+    val shortTapMessages: List<String> = emptyList()
 )
 
 class CuraMessageCatalog(val data: CuraMessageCatalogData) {
@@ -104,6 +105,50 @@ class CuraMessageCatalog(val data: CuraMessageCatalogData) {
             continuousScreenSeconds = continuousScreenSeconds,
             todayTotalPhoneSeconds = todayTotalPhoneSeconds
         )
+    }
+
+    /**
+     * 詳細が閉じている時（通常時）用の「数字を含まない短いメッセージ」を生成する
+     */
+    fun formatShortTapMessage(appName: String): String {
+        val candidates = data.shortTapMessages.takeIf { it.isNotEmpty() }
+            ?: listOf(
+                "えへへ、呼びましたか？無理せずマイペースでいきましょうねっ！",
+                "ひょこっ！マスター、お目々は疲れてませんか？",
+                "はーいっ！キュラが隣で見守ってますよ〜！ひと息つきますかっ？"
+            )
+        val template = candidates.random()
+        return template.replace("{app}", appName)
+    }
+
+    /**
+     * アコーディオン開閉状態に応じてセリフ枠のテキストを条件分岐する
+     * - isDetailsExpanded == true  : 3つの時間（appDay, phoneDay, screenCont）を読み上げる詳細メッセージ
+     * - isDetailsExpanded == false : 数字を含まない短い通常メッセージ
+     */
+    fun formatBalloonTapMessage(
+        isDetailsExpanded: Boolean,
+        appName: String,
+        appMinutes: Long,
+        screenMinutes: Long,
+        remainingBudgetMinutes: Long,
+        todayAppSeconds: Long = appMinutes * 60L,
+        continuousScreenSeconds: Long = screenMinutes * 60L,
+        todayTotalPhoneSeconds: Long = maxOf(todayAppSeconds, continuousScreenSeconds)
+    ): String {
+        return if (isDetailsExpanded) {
+            formatTapMessage(
+                appName = appName,
+                appMinutes = appMinutes,
+                screenMinutes = screenMinutes,
+                remainingBudgetMinutes = remainingBudgetMinutes,
+                todayAppSeconds = todayAppSeconds,
+                continuousScreenSeconds = continuousScreenSeconds,
+                todayTotalPhoneSeconds = todayTotalPhoneSeconds
+            )
+        } else {
+            formatShortTapMessage(appName)
+        }
     }
 
     private fun applyPlaceholders(
@@ -257,6 +302,11 @@ class CuraMessageCatalog(val data: CuraMessageCatalogData) {
                         "えへへ、呼びましたか？今日の{app}累計は{appDay}、画面連続{screenCont}、1日のスマホ累計は{phoneDay}ですよっ！",
                         "ひょこっ！{app}の1日累計が{appDay}、画面連続{screenCont}、今日のスマホ累計は{phoneDay}です！無理しないでね！",
                         "はーいっ！本日{app}を累計{appDay}、画面連続{screenCont}、スマホ全体で1日累計{phoneDay}使ってますよ〜！"
+                    ),
+                    shortTapMessages = listOf(
+                        "えへへ、呼びましたか？無理せずマイペースでいきましょうねっ！",
+                        "ひょこっ！マスター、お目々は疲れてませんか？",
+                        "はーいっ！キュラが隣で見守ってますよ〜！ひと息つきますかっ？"
                     )
                 )
             )
