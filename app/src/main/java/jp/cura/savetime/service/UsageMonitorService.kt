@@ -17,6 +17,7 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import jp.cura.savetime.MainActivity
 import jp.cura.savetime.R
+import jp.cura.savetime.manager.DailyGoalManager
 import jp.cura.savetime.model.ThresholdAlert
 import jp.cura.savetime.overlay.CuraOverlayManager
 import jp.cura.savetime.tracker.UsageSessionTracker
@@ -107,6 +108,9 @@ class UsageMonitorService : Service() {
             when (intent?.action) {
                 Intent.ACTION_SCREEN_OFF -> tracker.onScreenOff(now)
                 Intent.ACTION_SCREEN_ON -> tracker.onScreenOn(now)
+                Intent.ACTION_USER_PRESENT -> {
+                    checkAndTriggerMorningWakeupLock(now)
+                }
             }
         }
     }
@@ -126,6 +130,7 @@ class UsageMonitorService : Service() {
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_USER_PRESENT)
         }
         registerReceiver(screenReceiver, filter)
     }
@@ -145,6 +150,13 @@ class UsageMonitorService : Service() {
 
         monitorLoopJob = serviceScope.launch {
             val initNow = System.currentTimeMillis()
+            DailyGoalManager.updateDailyGoalIfNeeded(
+                context = this@UsageMonitorService,
+                usageStatsManager = usageStatsManager,
+                nowMs = initNow,
+                ignoredPackages = dynamicIgnoredPackages
+            )
+
             // 初回起動時は当日00:00:00（86,400秒軸の先頭）からのイベント履歴をバックフィルしてグラフに反映
             backfillDayTimelineFromUsageStats(initNow)
 
@@ -153,6 +165,13 @@ class UsageMonitorService : Service() {
 
             while (isActive) {
                 val now = System.currentTimeMillis()
+
+                DailyGoalManager.updateDailyGoalIfNeeded(
+                    context = this@UsageMonitorService,
+                    usageStatsManager = usageStatsManager,
+                    nowMs = now,
+                    ignoredPackages = dynamicIgnoredPackages
+                )
 
                 // ユーザー補助サービス未接続時、または現在セッションが空の時は UsageStatsManager で補完
                 if (!AppDetectorAccessibilityService.isServiceConnected || tracker.getCurrentSession() == null) {
@@ -206,6 +225,15 @@ class UsageMonitorService : Service() {
         }
 
         return START_STICKY
+    }
+
+    private fun checkAndTriggerMorningWakeupLock(nowMs: Long) {
+        if (DailyGoalManager.shouldTriggerMorningWakeupLock(this, nowMs)) {
+            DailyGoalManager.recordMorningWakeupLockTriggered(this, nowMs)
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                overlayManager.startMorningWakeupBlock(60)
+            }
+        }
     }
 
     private fun mainHandlerPostBlock() {

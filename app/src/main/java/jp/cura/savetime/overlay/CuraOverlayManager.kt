@@ -275,8 +275,34 @@ class CuraOverlayManager(private val context: Context) {
     /**
      * 30秒間フルスクリーンで画面全体を覆い、あらゆるタッチ・戻る操作をブロックする
      */
-    @SuppressLint("ClickableViewAccessibility")
     fun startThirtySecondBlock(durationSeconds: Int = 30) {
+        startScreenBlock(
+            durationSeconds = durationSeconds,
+            tagText = ":: CURA // 30s_SCREEN_LOCK_ACTIVE",
+            messageText = "マスター、30秒だけスマホを置いて\nお目々を休めましょうっ！\n\n画面を伏せて深呼吸してくださいね。"
+        )
+    }
+
+    /**
+     * 朝4時以降のその日最初のロック解除時に発動する、朝イチ1分間強制起床ロック
+     */
+    fun startMorningWakeupBlock(durationSeconds: Int = 60) {
+        startScreenBlock(
+            durationSeconds = durationSeconds,
+            tagText = ":: CURA // 60s_MORNING_WAKEUP_LOCK",
+            messageText = "おはようございます、マスター！\n朝イチの1分間強制起床ロックですっ。\nスマホを置いて目を覚ましましょう！"
+        )
+    }
+
+    /**
+     * 指定秒数フルスクリーンで画面全体を覆い、あらゆるタッチ・戻る操作をブロックする
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    fun startScreenBlock(
+        durationSeconds: Int,
+        tagText: String,
+        messageText: String
+    ) {
         if (!canDrawOverlay()) return
         hideBalloon()
 
@@ -291,7 +317,7 @@ class CuraOverlayManager(private val context: Context) {
 
         val container = object : LinearLayout(context) {
             override fun dispatchKeyEvent(event: KeyEvent?): Boolean {
-                // 戻るキー等のキー操作も30秒間ブロック
+                // 戻るキー等のキー操作もブロック
                 return true
             }
         }.apply {
@@ -307,7 +333,7 @@ class CuraOverlayManager(private val context: Context) {
         }
 
         val tagTv = TextView(context).apply {
-            text = ":: CURA // 30s_SCREEN_LOCK_ACTIVE"
+            text = tagText
             setTextColor(ContextCompat.getColor(context, R.color.accent_cyan))
             textSize = 12f
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
@@ -327,7 +353,7 @@ class CuraOverlayManager(private val context: Context) {
         }
 
         val messageTv = TextView(context).apply {
-            text = "マスター、30秒だけスマホを置いて\nお目々を休めましょうっ！\n\n画面を伏せて深呼吸してくださいね。"
+            text = messageText
             setTextColor(ContextCompat.getColor(context, R.color.text_primary))
             textSize = 16f
             gravity = Gravity.CENTER
@@ -395,7 +421,9 @@ class CuraOverlayManager(private val context: Context) {
 
     private fun updateBlockerCountdownText() {
         val sec = blockerRemainingSec.coerceAtLeast(0)
-        tvBlockerCountdown?.text = String.format(Locale.US, "00:%02d", sec)
+        val m = sec / 60
+        val s = sec % 60
+        tvBlockerCountdown?.text = String.format(Locale.US, "%02d:%02d", m, s)
     }
 
     fun stopThirtySecondBlock() {

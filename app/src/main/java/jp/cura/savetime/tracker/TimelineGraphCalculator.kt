@@ -1,5 +1,6 @@
 package jp.cura.savetime.tracker
 
+import jp.cura.savetime.manager.DailyGoalManager
 import jp.cura.savetime.model.TimelineEntry
 import java.util.Calendar
 import java.util.Locale
@@ -41,20 +42,14 @@ object TimelineGraphCalculator {
     )
 
     /**
-     * 指定時刻のローカル当日 00:00:00.000 のエポックミリ秒を取得
+     * 指定時刻のローカル当日（朝4時基準の論理日）の開始エポックミリ秒を取得
      */
     fun getStartOfDayMs(
         nowMs: Long = System.currentTimeMillis(),
+        baseHour: Int = DailyGoalManager.LOGICAL_DAY_BASE_HOUR,
         timeZone: TimeZone = TimeZone.getDefault()
     ): Long {
-        val cal = Calendar.getInstance(timeZone).apply {
-            timeInMillis = nowMs
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
-        return cal.timeInMillis
+        return DailyGoalManager.getLogicalDayStartMs(nowMs, baseHour, timeZone)
     }
 
     /**
@@ -185,24 +180,28 @@ object TimelineGraphCalculator {
 
     /**
      * 0..86400 の経過秒数を "HH:mm:ss" 形式にフォーマット
+     * baseHour を指定することで論理日（例: 朝4時開始なら 0s -> 04:00:00）に対応
      */
-    fun formatSecondOfDay(secondOfDay: Int): String {
+    fun formatSecondOfDay(secondOfDay: Int, baseHour: Int = 0): String {
         val clamped = secondOfDay.coerceIn(0, SECONDS_PER_DAY)
-        if (clamped == SECONDS_PER_DAY) return "24:00:00"
-        val h = clamped / 3600
-        val m = (clamped % 3600) / 60
-        val s = clamped % 60
+        if (baseHour == 0 && clamped == SECONDS_PER_DAY) return "24:00:00"
+        val totalSec = clamped + baseHour * 3600
+        val h = (totalSec / 3600) % 24
+        val m = (totalSec % 3600) / 60
+        val s = totalSec % 60
         return String.format(Locale.US, "%02d:%02d:%02d", h, m, s)
     }
 
     /**
      * 0..86400 の経過秒数を "HH:mm" 形式にフォーマット
+     * baseHour を指定することで論理日（例: 朝4時開始なら 0s -> 04:00）に対応
      */
-    fun formatHourMinute(secondOfDay: Int): String {
+    fun formatHourMinute(secondOfDay: Int, baseHour: Int = 0): String {
         val clamped = secondOfDay.coerceIn(0, SECONDS_PER_DAY)
-        if (clamped == SECONDS_PER_DAY) return "24:00"
-        val h = clamped / 3600
-        val m = (clamped % 3600) / 60
+        if (baseHour == 0 && clamped == SECONDS_PER_DAY) return "24:00"
+        val totalSec = clamped + baseHour * 3600
+        val h = (totalSec / 3600) % 24
+        val m = (totalSec % 3600) / 60
         return String.format(Locale.US, "%02d:%02d", h, m)
     }
 

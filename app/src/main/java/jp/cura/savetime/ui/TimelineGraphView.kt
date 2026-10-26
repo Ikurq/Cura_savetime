@@ -213,7 +213,7 @@ class TimelineGraphView @JvmOverloads constructor(
 
         // 軸単位ヘッダ表示
         canvas.drawText("縦:秒(s)", 2f * density, 12f * density, axisUnitPaint)
-        val rangeText = "横軸: ${windowStartSec}s - ${windowEndSec}s / 86400s (${TimelineGraphCalculator.formatHourMinute(windowStartSec)}-${TimelineGraphCalculator.formatHourMinute(windowEndSec)})"
+        val rangeText = "横軸: ${windowStartSec}s - ${windowEndSec}s / 86400s (${TimelineGraphCalculator.formatHourMinute(windowStartSec, jp.cura.savetime.manager.DailyGoalManager.LOGICAL_DAY_BASE_HOUR)}-${TimelineGraphCalculator.formatHourMinute(windowEndSec, jp.cura.savetime.manager.DailyGoalManager.LOGICAL_DAY_BASE_HOUR)})"
         val rangeTextWidth = labelPaint.measureText(rangeText)
         canvas.drawText(
             rangeText,
@@ -251,9 +251,9 @@ class TimelineGraphView @JvmOverloads constructor(
             canvas.drawLine(xPos, plotTop, xPos, plotBottom, if (i == 0) axisPaint else gridPaint)
 
             val timeLabel = if (windowSpanSec <= 3600) {
-                TimelineGraphCalculator.formatSecondOfDay(secAtTick)
+                TimelineGraphCalculator.formatSecondOfDay(secAtTick, jp.cura.savetime.manager.DailyGoalManager.LOGICAL_DAY_BASE_HOUR)
             } else {
-                TimelineGraphCalculator.formatHourMinute(secAtTick)
+                TimelineGraphCalculator.formatHourMinute(secAtTick, jp.cura.savetime.manager.DailyGoalManager.LOGICAL_DAY_BASE_HOUR)
             }
             val labelWidth = labelPaint.measureText(timeLabel)
             val alignedX = when (i) {
