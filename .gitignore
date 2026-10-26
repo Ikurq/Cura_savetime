@@ -67,6 +67,8 @@ logs/
 *.log
 tmp/
 temp/
+build_artifacts/
+*.apk
 
 dist/
 
