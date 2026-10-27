@@ -214,7 +214,7 @@ class MainActivity : AppCompatActivity() {
         fun refreshButtons() {
             val mode = scheduleMgr.getScheduleMode()
             val activeColor = ContextCompat.getColor(this, R.color.accent_cyan)
-            val inactiveColor = ContextCompat.getColor(this, R.color.bg_card)
+            val inactiveColor = ContextCompat.getColor(this, R.color.bg_surface)
             val activeTextColor = ContextCompat.getColor(this, R.color.bg_void)
             val inactiveTextColor = ContextCompat.getColor(this, R.color.text_primary)
 
