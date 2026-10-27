@@ -280,7 +280,7 @@ class CuraOverlayManager(private val context: Context) {
         startScreenBlock(
             durationSeconds = durationSeconds,
             tagText = ":: CURA // 30s_SCREEN_LOCK_ACTIVE",
-            messageText = "マスター、$actionっ！\n\n画面を伏せて少しだけ体を休めましょうね。"
+            messageText = "マスター、${action}っ！\n\n画面を伏せて少しだけ体を休めましょうね。"
         )
     }
 
