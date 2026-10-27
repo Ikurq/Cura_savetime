@@ -18,9 +18,23 @@ object DailyGoalManager {
     private const val KEY_LAST_MORNING_LOCK_DAY_MS = "last_morning_lock_day_ms"
 
     const val LOGICAL_DAY_BASE_HOUR = 4
+    const val SLEEP_START_HOUR = 22
+    const val SLEEP_END_HOUR = 4
     const val DEFAULT_FALLBACK_GOAL_SECONDS = 3 * 3600L // 3時間 (10800秒)
     const val MINIMUM_GOAL_SECONDS = 30 * 60L // 最小目標: 30分
     const val REDUCTION_RATE = 0.10 // 先週から10%削減
+
+    /**
+     * 22:00〜04:00の時間帯（夜間「今日は眠る」ブロック利用可能時間）かを判定
+     */
+    fun isSleepBlockAvailable(
+        nowMs: Long = System.currentTimeMillis(),
+        timeZone: TimeZone = TimeZone.getDefault()
+    ): Boolean {
+        val cal = Calendar.getInstance(timeZone).apply { timeInMillis = nowMs }
+        val hour = cal.get(Calendar.HOUR_OF_DAY)
+        return hour >= SLEEP_START_HOUR || hour < SLEEP_END_HOUR
+    }
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

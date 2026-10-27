@@ -173,12 +173,20 @@ class MainActivity : AppCompatActivity() {
             triggerThirtySecondBlock()
         }
 
+        binding.btnHeroSleep1h.setOnClickListener {
+            triggerOneHourSleepBlock()
+        }
+
         binding.tvHeroCuraMessage.setOnClickListener {
             showTapSummaryInHero()
         }
 
         binding.btnQuickBlock30s.setOnClickListener {
             triggerThirtySecondBlock()
+        }
+
+        binding.btnQuickSleep1h.setOnClickListener {
+            triggerOneHourSleepBlock()
         }
 
         binding.tvMicroLogHeader.setOnClickListener {
@@ -364,6 +372,31 @@ class MainActivity : AppCompatActivity() {
         UsageMonitorService.shouldTriggerThirtySecondBlock = true
         Toast.makeText(this, "${currentMicroAction}（30秒間ロック）を開始します", Toast.LENGTH_SHORT).show()
         refreshMicroAction(force = true)
+    }
+
+    private fun triggerOneHourSleepBlock() {
+        val canDraw = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            Settings.canDrawOverlays(this)
+        } else {
+            true
+        }
+        if (!canDraw) {
+            Toast.makeText(this, "「他のアプリの上に重ねて表示」権限を許可してください", Toast.LENGTH_SHORT).show()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                startActivity(
+                    Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:$packageName")
+                    )
+                )
+            }
+            return
+        }
+        if (!UsageMonitorService.isRunning && hasUsageStatsPermission()) {
+            startMonitorService()
+        }
+        UsageMonitorService.shouldTriggerOneHourSleepBlock = true
+        Toast.makeText(this, "「今日は眠る」モード（1時間スマホロック）を開始します", Toast.LENGTH_SHORT).show()
     }
 
     private fun showAppActionSheet(pkg: String, appName: String) {
@@ -655,6 +688,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateUiState() {
         refreshMicroAction(force = false)
+
+        val isSleepTime = DailyGoalManager.isSleepBlockAvailable()
+        binding.btnHeroSleep1h.visibility = if (isSleepTime) View.VISIBLE else View.GONE
+        binding.btnQuickSleep1h.visibility = if (isSleepTime) View.VISIBLE else View.GONE
 
         val isRunning = UsageMonitorService.isRunning
         if (binding.switchMonitorDaemon.isChecked != isRunning) {

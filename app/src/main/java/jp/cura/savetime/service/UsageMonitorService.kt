@@ -96,6 +96,9 @@ class UsageMonitorService : Service() {
         @Volatile
         var shouldTriggerThirtySecondBlock = false
 
+        @Volatile
+        var shouldTriggerOneHourSleepBlock = false
+
         var scheduleManager: CuraScheduleManager? = null
             private set
 
@@ -220,6 +223,10 @@ class UsageMonitorService : Service() {
                     shouldTriggerThirtySecondBlock = false
                     mainHandlerPostBlock()
                 }
+                if (shouldTriggerOneHourSleepBlock) {
+                    shouldTriggerOneHourSleepBlock = false
+                    mainHandlerPostSleepBlock()
+                }
                 val isGhost = if (session != null && !session.isBufferActive) {
                     ghostAppsStore.isGhostModeApp(session.packageName)
                 } else {
@@ -273,6 +280,12 @@ class UsageMonitorService : Service() {
     private fun mainHandlerPostBlock() {
         android.os.Handler(android.os.Looper.getMainLooper()).post {
             overlayManager.startThirtySecondBlock(30)
+        }
+    }
+
+    private fun mainHandlerPostSleepBlock() {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            overlayManager.startOneHourSleepBlock(3600)
         }
     }
 

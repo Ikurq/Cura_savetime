@@ -105,4 +105,35 @@ class DailyGoalManagerTest {
         // secondOfDay = 86400 (24時間後 = 翌朝04:00) は "04:00"
         assertEquals("04:00", TimelineGraphCalculator.formatHourMinute(86400, baseHour = 4))
     }
+
+    @Test
+    fun testIsSleepBlockAvailable_between22And4() {
+        // 21:59:59 -> 利用不可
+        val t2159 = createTimestamp(2026, 10, 27, 21, 59, 59)
+        assertFalse(DailyGoalManager.isSleepBlockAvailable(t2159, timeZone))
+
+        // 22:00:00 -> 利用可能
+        val t2200 = createTimestamp(2026, 10, 27, 22, 0, 0)
+        assertTrue(DailyGoalManager.isSleepBlockAvailable(t2200, timeZone))
+
+        // 23:30:00 -> 利用可能
+        val t2330 = createTimestamp(2026, 10, 27, 23, 30, 0)
+        assertTrue(DailyGoalManager.isSleepBlockAvailable(t2330, timeZone))
+
+        // 00:00:00 -> 利用可能
+        val t0000 = createTimestamp(2026, 10, 28, 0, 0, 0)
+        assertTrue(DailyGoalManager.isSleepBlockAvailable(t0000, timeZone))
+
+        // 03:59:59 -> 利用可能
+        val t0359 = createTimestamp(2026, 10, 28, 3, 59, 59)
+        assertTrue(DailyGoalManager.isSleepBlockAvailable(t0359, timeZone))
+
+        // 04:00:00 -> 利用不可（朝4時リセットで終了）
+        val t0400 = createTimestamp(2026, 10, 28, 4, 0, 0)
+        assertFalse(DailyGoalManager.isSleepBlockAvailable(t0400, timeZone))
+
+        // 12:00:00 -> 利用不可
+        val t1200 = createTimestamp(2026, 10, 28, 12, 0, 0)
+        assertFalse(DailyGoalManager.isSleepBlockAvailable(t1200, timeZone))
+    }
 }
