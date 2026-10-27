@@ -68,7 +68,6 @@ class CuraOverlayManager(private val context: Context) {
 
     // フルスクリーンブロック用オーバーレイ
     private var blockerView: View? = null
-    private var tvBlockerCountdown: TextView? = null
     private var blockerRemainingSec: Int = 0
     private var blockerEndTimeMs: Long = 0L
     private val blockerTickRunnable = object : Runnable {
@@ -79,7 +78,6 @@ class CuraOverlayManager(private val context: Context) {
             if (remSec <= 0) {
                 stopThirtySecondBlock()
             } else {
-                updateBlockerCountdownText()
                 mainHandler.postDelayed(this, 1000L)
             }
         }
@@ -289,7 +287,7 @@ class CuraOverlayManager(private val context: Context) {
         val action = jp.cura.savetime.util.RelaxActionCatalog.getRandomAction(context)
         startScreenBlock(
             durationSeconds = durationSeconds,
-            tagText = ":: CURA // 30s_SCREEN_LOCK_ACTIVE",
+            tagText = ":: CURA // SCREEN_RELAX_LOCK",
             messageText = "マスター、${action}っ！\n\n画面を伏せて少しだけ体を休めましょうね。"
         )
     }
@@ -300,8 +298,8 @@ class CuraOverlayManager(private val context: Context) {
     fun startMorningWakeupBlock(durationSeconds: Int = 60) {
         startScreenBlock(
             durationSeconds = durationSeconds,
-            tagText = ":: CURA // 60s_MORNING_WAKEUP_LOCK",
-            messageText = "おはようございます、マスター！\n朝イチの1分間強制起床ロックですっ。\nスマホを置いて目を覚ましましょう！"
+            tagText = ":: CURA // MORNING_WAKEUP_LOCK",
+            messageText = "おはようございます、マスター！\n朝イチの強制起床ロックですっ。\nスマホを置いて目を覚ましましょう！"
         )
     }
 
@@ -311,7 +309,7 @@ class CuraOverlayManager(private val context: Context) {
     fun startOneHourSleepBlock(durationSeconds: Int = 3600) {
         startScreenBlock(
             durationSeconds = durationSeconds,
-            tagText = ":: CURA // 1H_SLEEP_DEFENSE_LOCK",
+            tagText = ":: CURA // SLEEP_DEFENSE_LOCK",
             messageText = "マスター、今日もお疲れ様でした！\n「今日は眠る」モードを発動しましたっ。\n\n画面を伏せて、ぐっすりおやすみしてくださいね。"
         )
     }
@@ -331,7 +329,6 @@ class CuraOverlayManager(private val context: Context) {
         if (blockerView != null) {
             blockerEndTimeMs = System.currentTimeMillis() + durationSeconds * 1000L
             blockerRemainingSec = durationSeconds
-            updateBlockerCountdownText()
             return
         }
 
@@ -384,33 +381,23 @@ class CuraOverlayManager(private val context: Context) {
             setLineSpacing(6f * density, 1f)
         }
 
-        val countdownTv = TextView(context).apply {
-            setTextColor(ContextCompat.getColor(context, R.color.accent_crimson))
-            textSize = 48f
-            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+        val noteTv = TextView(context).apply {
+            text = "[ 時間が来たら自動で解除されます。ゆっくりお過ごしください ]"
+            setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
+            textSize = 12f
+            typeface = Typeface.MONOSPACE
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                topMargin = (24 * density).toInt()
-                bottomMargin = (16 * density).toInt()
+                topMargin = (28 * density).toInt()
             }
-        }
-        tvBlockerCountdown = countdownTv
-
-        val noteTv = TextView(context).apply {
-            text = "[ カウントが 00:00 になるまで画面操作はロックされています ]"
-            setTextColor(ContextCompat.getColor(context, R.color.accent_lime))
-            textSize = 11.5f
-            typeface = Typeface.MONOSPACE
-            gravity = Gravity.CENTER
         }
 
         container.addView(tagTv)
         container.addView(charImage)
         container.addView(messageTv)
-        container.addView(countdownTv)
         container.addView(noteTv)
 
         val blockerParams = WindowManager.LayoutParams(
@@ -431,7 +418,6 @@ class CuraOverlayManager(private val context: Context) {
         }
 
         blockerView = container
-        updateBlockerCountdownText()
 
         try {
             windowManager.addView(container, blockerParams)
@@ -443,18 +429,6 @@ class CuraOverlayManager(private val context: Context) {
         }
     }
 
-    private fun updateBlockerCountdownText() {
-        val sec = blockerRemainingSec.coerceAtLeast(0)
-        val h = sec / 3600
-        val m = (sec % 3600) / 60
-        val s = sec % 60
-        tvBlockerCountdown?.text = if (h > 0) {
-            String.format(Locale.US, "%02d:%02d:%02d", h, m, s)
-        } else {
-            String.format(Locale.US, "%02d:%02d", m, s)
-        }
-    }
-
     fun stopThirtySecondBlock() {
         mainHandler.removeCallbacks(blockerTickRunnable)
         blockerView?.let {
@@ -463,7 +437,6 @@ class CuraOverlayManager(private val context: Context) {
             } catch (_: Exception) {}
         }
         blockerView = null
-        tvBlockerCountdown = null
         blockerRemainingSec = 0
     }
 
