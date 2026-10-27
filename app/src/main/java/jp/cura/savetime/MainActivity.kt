@@ -28,6 +28,10 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import jp.cura.savetime.databinding.ActivityMainBinding
+import jp.cura.savetime.manager.CuraScheduleManager
+import jp.cura.savetime.manager.DailyGoalManager
+import jp.cura.savetime.manager.HourlyBudgetStatus
+import jp.cura.savetime.manager.ScheduleMode
 import jp.cura.savetime.model.TimelineEntry
 import jp.cura.savetime.service.UsageMonitorService
 import jp.cura.savetime.tracker.TimelineGraphCalculator
@@ -200,6 +204,47 @@ class MainActivity : AppCompatActivity() {
         binding.btnEditDialogueJson.setOnClickListener {
             showEditDialogueJsonDialog()
         }
+
+        setupScheduleTemplateButtons()
+    }
+
+    private fun setupScheduleTemplateButtons() {
+        val scheduleMgr = UsageMonitorService.scheduleManager ?: CuraScheduleManager(this)
+
+        fun refreshButtons() {
+            val mode = scheduleMgr.getScheduleMode()
+            val activeColor = ContextCompat.getColor(this, R.color.accent_cyan)
+            val inactiveColor = ContextCompat.getColor(this, R.color.bg_card)
+            val activeTextColor = ContextCompat.getColor(this, R.color.bg_void)
+            val inactiveTextColor = ContextCompat.getColor(this, R.color.text_primary)
+
+            binding.btnTemplateModeAuto.backgroundTintList = ColorStateList.valueOf(if (mode == ScheduleMode.AUTO) activeColor else inactiveColor)
+            binding.btnTemplateModeAuto.setTextColor(if (mode == ScheduleMode.AUTO) activeTextColor else inactiveTextColor)
+
+            binding.btnTemplateModeWeekday.backgroundTintList = ColorStateList.valueOf(if (mode == ScheduleMode.FORCE_WEEKDAY) activeColor else inactiveColor)
+            binding.btnTemplateModeWeekday.setTextColor(if (mode == ScheduleMode.FORCE_WEEKDAY) activeTextColor else inactiveTextColor)
+
+            binding.btnTemplateModeHoliday.backgroundTintList = ColorStateList.valueOf(if (mode == ScheduleMode.FORCE_HOLIDAY) activeColor else inactiveColor)
+            binding.btnTemplateModeHoliday.setTextColor(if (mode == ScheduleMode.FORCE_HOLIDAY) activeTextColor else inactiveTextColor)
+
+            val currentTemplate = scheduleMgr.determineTemplate()
+            binding.tvCurrentTemplateBadge.text = "[ ${currentTemplate.displayName} ]"
+        }
+
+        binding.btnTemplateModeAuto.setOnClickListener {
+            scheduleMgr.setScheduleMode(ScheduleMode.AUTO)
+            refreshButtons()
+        }
+        binding.btnTemplateModeWeekday.setOnClickListener {
+            scheduleMgr.setScheduleMode(ScheduleMode.FORCE_WEEKDAY)
+            refreshButtons()
+        }
+        binding.btnTemplateModeHoliday.setOnClickListener {
+            scheduleMgr.setScheduleMode(ScheduleMode.FORCE_HOLIDAY)
+            refreshButtons()
+        }
+
+        refreshButtons()
     }
 
     private fun switchTab(tabIndex: Int) {
@@ -623,11 +668,26 @@ class MainActivity : AppCompatActivity() {
         val todayTotalSec = UsageMonitorService.tracker.getTodayTotalPhoneUsageSeconds()
         binding.tvTodayTotalTimer.text = formatHms(todayTotalSec)
 
-        // Hourly budget progress (target: 30 min = 1800s per hour)
-        val budgetUsedSec = maxOf(screenSec, (session?.continuousDurationMs ?: 0L) / 1000L)
-        val budgetPct = ((budgetUsedSec * 100L) / 1800L).toInt().coerceIn(0, 100)
+        // Hourly budget progress (動的ウェイト配分および貯金プール連動)
+        val budgetStatus = UsageMonitorService.latestBudgetStatus
+        val availableSec = budgetStatus?.totalAvailableBudgetSeconds ?: 1800L
+        val budgetUsedSec = budgetStatus?.usedSeconds ?: maxOf(screenSec, (session?.continuousDurationMs ?: 0L) / 1000L)
+        val budgetPct = if (availableSec > 0L) {
+            ((budgetUsedSec * 100L) / availableSec).toInt().coerceIn(0, 100)
+        } else {
+            if (budgetUsedSec > 0L) 100 else 0
+        }
         binding.progressHourlyGoal.progress = budgetPct
-        binding.tvGoalProgressLabel.text = "${budgetPct}% 使用済み"
+
+        if (budgetStatus != null) {
+            val totalAvailMins = budgetStatus.totalAvailableMinutes
+            binding.tvHourlyGoalTitle.text = "1時間予算 [${budgetStatus.templateType.displayName}: ${totalAvailMins}分枠]"
+        } else {
+            binding.tvHourlyGoalTitle.text = "1時間予算 (目標 30分以内)"
+        }
+
+        val savingsStr = if ((budgetStatus?.carriedSavingsSeconds ?: 0L) > 0L) " (貯金+${budgetStatus!!.savingsMinutes}分)" else ""
+        binding.tvGoalProgressLabel.text = "${budgetPct}% 使用済み${savingsStr}"
 
         val progressColorRes = when {
             budgetPct >= 85 -> R.color.accent_crimson

@@ -17,7 +17,11 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import jp.cura.savetime.MainActivity
 import jp.cura.savetime.R
+import jp.cura.savetime.manager.CuraScheduleManager
 import jp.cura.savetime.manager.DailyGoalManager
+import jp.cura.savetime.manager.HourlyBudgetManager
+import jp.cura.savetime.manager.HourlyBudgetStatus
+import jp.cura.savetime.manager.ScheduleTemplateType
 import jp.cura.savetime.model.ThresholdAlert
 import jp.cura.savetime.overlay.CuraOverlayManager
 import jp.cura.savetime.tracker.UsageSessionTracker
@@ -91,6 +95,16 @@ class UsageMonitorService : Service() {
 
         @Volatile
         var shouldTriggerThirtySecondBlock = false
+
+        var scheduleManager: CuraScheduleManager? = null
+            private set
+
+        var hourlyBudgetManager: HourlyBudgetManager? = null
+            private set
+
+        @Volatile
+        var latestBudgetStatus: HourlyBudgetStatus? = null
+            private set
     }
 
     private val serviceJob = Job()
@@ -126,6 +140,8 @@ class UsageMonitorService : Service() {
         createNotificationChannels()
         ghostAppsStore = jp.cura.savetime.util.GhostAppsStore(this)
         overlayManager = CuraOverlayManager(this)
+        scheduleManager = CuraScheduleManager(this)
+        hourlyBudgetManager = HourlyBudgetManager(this)
 
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)
@@ -209,6 +225,21 @@ class UsageMonitorService : Service() {
                 } else {
                     false
                 }
+
+                // カレンダー・予定連動テンプレートと毎時ウェイト配分・貯金の更新
+                val currentTemplate = scheduleManager?.determineTemplate(now) ?: ScheduleTemplateType.WEEKDAY_CLASS
+                val todayGoalSec = DailyGoalManager.getTodayGoalSeconds(this@UsageMonitorService)
+                val prevHourUsedSec = tracker.getPreviousHourPhoneUsageSeconds(now)
+                val currentHourUsedSec = tracker.getCurrentHourPhoneUsageSeconds(now)
+                val budgetStatus = hourlyBudgetManager?.updateHourlyBudget(
+                    nowMs = now,
+                    dailyGoalSeconds = todayGoalSec,
+                    templateType = currentTemplate,
+                    previousHourUsedSeconds = prevHourUsedSec,
+                    currentHourUsageSeconds = currentHourUsedSec
+                )
+                latestBudgetStatus = budgetStatus
+
                 overlayManager.updateState(
                     packageName = session?.packageName,
                     appName = targetAppName,
@@ -217,7 +248,10 @@ class UsageMonitorService : Service() {
                     todayAppDurationSec = todayAppSec,
                     todayTotalPhoneDurationSec = todayTotalPhoneSec,
                     isBuffer = session?.isBufferActive ?: false,
-                    isGhostMode = isGhost
+                    isGhostMode = isGhost,
+                    remainingBudgetMinutes = budgetStatus?.remainingMinutes,
+                    savingsMinutes = budgetStatus?.savingsMinutes ?: 0L,
+                    templateName = currentTemplate.displayName
                 )
 
                 delay(1000L) // 1秒間隔でUI/オーバーレイ更新

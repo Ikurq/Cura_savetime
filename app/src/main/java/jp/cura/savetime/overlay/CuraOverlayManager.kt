@@ -499,7 +499,10 @@ class CuraOverlayManager(private val context: Context) {
         todayAppDurationSec: Long = continuousDurationMs / 1000L,
         todayTotalPhoneDurationSec: Long = maxOf(todayAppDurationSec, totalScreenDurationMs / 1000L),
         isBuffer: Boolean,
-        isGhostMode: Boolean = false
+        isGhostMode: Boolean = false,
+        remainingBudgetMinutes: Long? = null,
+        savingsMinutes: Long = 0L,
+        templateName: String? = null
     ) {
         mainHandler.post {
             if (overlayView == null) return@post
@@ -512,7 +515,7 @@ class CuraOverlayManager(private val context: Context) {
 
             val activeRule = limitManager.getActiveRule()
             val effectiveMinutes = maxOf(appMinutes, screenMinutes)
-            val remainingBudget = limitManager.calculateRemainingHourlyBudget(effectiveMinutes)
+            val remainingBudget = remainingBudgetMinutes ?: limitManager.calculateRemainingHourlyBudget(effectiveMinutes)
             val isExceeded = limitManager.isContinuousLimitExceeded(effectiveMinutes)
 
             lastAppName = appName
@@ -530,13 +533,14 @@ class CuraOverlayManager(private val context: Context) {
 
             // 1. 常時表示要素の更新（ヘッダー、アプリ名、画面連続時間）
             tvBalloonAppName?.text = "$appName$modeSuffix"
-            tvBalloonRuleTag?.text = "[${activeRule.name}]"
+            tvBalloonRuleTag?.text = if (!templateName.isNullOrBlank()) "[${activeRule.name} / $templateName]" else "[${activeRule.name}]"
             tvBalloonContinuousDuration?.text = "画面連続: $screenContStr"
 
             // 2. タップ開閉する詳細データ枠の更新（1日のアプリ累計、1日のスマホ累計、残枠、上限警告）
             tvBalloonAppDayTotal?.text = "1日のアプリ累計: $appDayStr"
             tvBalloonPhoneDayTotal?.text = "1日のスマホ累計: $phoneDayStr"
-            tvBalloonBudgetRemaining?.text = "1時間の残枠: ${remainingBudget}分"
+            val budgetText = if (savingsMinutes > 0) "1時間の残枠: ${remainingBudget}分 (+貯金${savingsMinutes}分)" else "1時間の残枠: ${remainingBudget}分"
+            tvBalloonBudgetRemaining?.text = budgetText
 
             if (isExceeded) {
                 tvBalloonAlertWarning?.visibility = View.VISIBLE

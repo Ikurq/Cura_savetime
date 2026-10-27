@@ -106,6 +106,48 @@ class UsageSessionTracker(
     }
 
     /**
+     * 現在の1時間枠（毎正時 XX:00〜現在）におけるスマホ合計使用秒数を算出
+     */
+    fun getCurrentHourPhoneUsageSeconds(now: Long = System.currentTimeMillis()): Long {
+        val startOfHourMs = (now / (3600_000L)) * 3600_000L
+        val endOfHourMs = startOfHourMs + 3600_000L
+
+        var timelineHourSec = 0L
+        for (entry in getTimeline()) {
+            val s = entry.timestampMs
+            val e = s + entry.durationSeconds * 1000L
+            if (e > startOfHourMs && s < endOfHourMs) {
+                val clampedStart = maxOf(s, startOfHourMs)
+                val clampedEnd = minOf(e, endOfHourMs)
+                timelineHourSec += ((clampedEnd - clampedStart) / 1000L).coerceAtLeast(0L)
+            }
+        }
+        val currentSessionSec = (getCurrentSession()?.continuousDurationMs ?: 0L) / 1000L
+        return maxOf(timelineHourSec, currentSessionSec)
+    }
+
+    /**
+     * 直前の1時間枠（XX-1:00〜XX:00）におけるスマホ合計使用秒数を算出
+     */
+    fun getPreviousHourPhoneUsageSeconds(now: Long = System.currentTimeMillis()): Long {
+        val currentHourStartMs = (now / (3600_000L)) * 3600_000L
+        val prevHourStartMs = currentHourStartMs - 3600_000L
+        val prevHourEndMs = currentHourStartMs
+
+        var timelinePrevHourSec = 0L
+        for (entry in getTimeline()) {
+            val s = entry.timestampMs
+            val e = s + entry.durationSeconds * 1000L
+            if (e > prevHourStartMs && s < prevHourEndMs) {
+                val clampedStart = maxOf(s, prevHourStartMs)
+                val clampedEnd = minOf(e, prevHourEndMs)
+                timelinePrevHourSec += ((clampedEnd - clampedStart) / 1000L).coerceAtLeast(0L)
+            }
+        }
+        return timelinePrevHourSec
+    }
+
+    /**
      * 確定済みレコードと現在進行中のセッションを統合したランキングリストを取得
      */
     fun getRecords(): List<ContinuousRecord> {
