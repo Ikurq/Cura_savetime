@@ -40,6 +40,7 @@ import jp.cura.savetime.util.AppUpdateManager
 import jp.cura.savetime.util.CuraMessageCatalog
 import jp.cura.savetime.util.ExcludedAppsStore
 import jp.cura.savetime.util.GhostAppsStore
+import jp.cura.savetime.util.RelaxActionCatalog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -80,10 +81,24 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private var currentMicroAction: String = "1回だけ深呼吸する"
+    private var lastMicroActionRefreshMs: Long = 0L
+
+    private fun refreshMicroAction(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (force || now - lastMicroActionRefreshMs >= 30_000L) {
+            lastMicroActionRefreshMs = now
+            currentMicroAction = RelaxActionCatalog.getRandomAction(this)
+            binding.btnHeroBlock30s.text = currentMicroAction
+            binding.btnQuickBlock30s.text = "$currentMicroAction (30秒ブロック)"
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         checkPermissions()
         updateUiState()
+        refreshMicroAction(force = true)
 
         val filter = IntentFilter(UsageMonitorService.ACTION_STATE_CHANGED)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -347,7 +362,8 @@ class MainActivity : AppCompatActivity() {
             startMonitorService()
         }
         UsageMonitorService.shouldTriggerThirtySecondBlock = true
-        Toast.makeText(this, "30秒間スマホロックを開始します", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "${currentMicroAction}（30秒間ロック）を開始します", Toast.LENGTH_SHORT).show()
+        refreshMicroAction(force = true)
     }
 
     private fun showAppActionSheet(pkg: String, appName: String) {
@@ -638,6 +654,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateUiState() {
+        refreshMicroAction(force = false)
+
         val isRunning = UsageMonitorService.isRunning
         if (binding.switchMonitorDaemon.isChecked != isRunning) {
             binding.switchMonitorDaemon.isChecked = isRunning

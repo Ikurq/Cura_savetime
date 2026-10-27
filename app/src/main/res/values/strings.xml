@@ -13,4 +13,16 @@
     <string name="accessibility_required_title">:: ACCESSIBILITY_REQUIRED</string>
     <string name="accessibility_required_desc">アプリの起動・切り替えを即座に認識するため、「ユーザー補助」をONにしてください。</string>
     <string name="grant_accessibility">ユーザー補助を設定する</string>
+
+    <!-- 心理的ハードルを下げるマイクロアクション文言リスト -->
+    <string-array name="micro_action_button_labels">
+        <item>1回だけ深呼吸する</item>
+        <item>うーんと背伸びする</item>
+        <item>30秒だけ目を閉じる</item>
+        <item>ちょっと遠くを見る</item>
+        <item>肩をぐるぐる回す</item>
+        <item>お水をひと口飲む</item>
+        <item>首をゆっくり回す</item>
+        <item>手首をぶらぶら振る</item>
+    </string-array>
 </resources>

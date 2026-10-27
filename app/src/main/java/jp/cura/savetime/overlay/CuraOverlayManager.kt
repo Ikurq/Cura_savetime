@@ -276,10 +276,11 @@ class CuraOverlayManager(private val context: Context) {
      * 30秒間フルスクリーンで画面全体を覆い、あらゆるタッチ・戻る操作をブロックする
      */
     fun startThirtySecondBlock(durationSeconds: Int = 30) {
+        val action = jp.cura.savetime.util.RelaxActionCatalog.getRandomAction(context)
         startScreenBlock(
             durationSeconds = durationSeconds,
             tagText = ":: CURA // 30s_SCREEN_LOCK_ACTIVE",
-            messageText = "マスター、30秒だけスマホを置いて\nお目々を休めましょうっ！\n\n画面を伏せて深呼吸してくださいね。"
+            messageText = "マスター、$actionっ！\n\n画面を伏せて少しだけ体を休めましょうね。"
         )
     }
 
@@ -469,6 +470,8 @@ class CuraOverlayManager(private val context: Context) {
 
     private fun showBalloon(autoHideSec: Int = 0) {
         mainHandler.removeCallbacks(autoHideRunnable)
+        val action = jp.cura.savetime.util.RelaxActionCatalog.getRandomAction(context)
+        btnBalloonBlock30s?.text = "$action (30秒)"
         layoutBalloon?.visibility = View.VISIBLE
         isBalloonVisible = true
 
