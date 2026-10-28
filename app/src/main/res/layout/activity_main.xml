@@ -210,7 +210,7 @@
                 android:orientation="vertical"
                 android:visibility="visible">
 
-                <!-- 2. Hero Section: Today's Total Usage & Character Comm-Link -->
+                <!-- 1. Hero Section: Today's Total Usage -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -230,9 +230,9 @@
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:fontFamily="monospace"
-                            android:text=":: TODAY_TOTAL_USAGE // 本日累計"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="10.5sp"
+                            android:text="本日の利用時間"
+                            android:textColor="@color/accent_cyan"
+                            android:textSize="11.5sp"
                             android:textStyle="bold" />
 
                         <TextView
@@ -341,87 +341,9 @@
                         android:progress="0"
                         android:progressBackgroundTint="@color/bg_surface"
                         android:progressTint="@color/accent_lime" />
-
-                    <!-- Integrated Character Comm-Link Window (Terminal Assistant Frame) -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="14dp"
-                        android:background="@color/bg_surface"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal"
-                        android:padding="10dp">
-
-                        <ImageView
-                            android:layout_width="46dp"
-                            android:layout_height="46dp"
-                            android:layout_marginEnd="10dp"
-                            android:adjustViewBounds="true"
-                            android:contentDescription="Cura Assistant"
-                            android:scaleType="fitCenter"
-                            android:src="@drawable/cura_peeking_chibi" />
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="vertical">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:fontFamily="monospace"
-                                android:text=":: CURA_COMM_LINK // ASSISTANT"
-                                android:textColor="@color/accent_cyan"
-                                android:textSize="9.5sp"
-                                android:textStyle="bold" />
-
-                            <TextView
-                                android:id="@+id/tvHeroCuraMessage"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="2dp"
-                                android:text="マスター、今日もスマホの使いすぎに気をつけて一緒にがんばりましょうねっ！"
-                                android:textColor="@color/text_primary"
-                                android:textSize="11.5sp" />
-                        </LinearLayout>
-
-                        <Button
-                            android:id="@+id/btnHeroBlock30s"
-                            android:layout_width="wrap_content"
-                            android:layout_height="32dp"
-                            android:layout_marginStart="8dp"
-                            android:backgroundTint="@color/accent_mint"
-                            android:insetTop="0dp"
-                            android:insetBottom="0dp"
-                            android:minWidth="0dp"
-                            android:paddingHorizontal="10dp"
-                            android:paddingVertical="0dp"
-                            android:text="1回だけ深呼吸する"
-                            android:textColor="@color/bg_void"
-                            android:textSize="10sp"
-                            android:textStyle="bold" />
-
-                        <Button
-                            android:id="@+id/btnHeroSleep1h"
-                            android:layout_width="wrap_content"
-                            android:layout_height="32dp"
-                            android:layout_marginStart="6dp"
-                            android:backgroundTint="@color/accent_pastel_cyan"
-                            android:insetTop="0dp"
-                            android:insetBottom="0dp"
-                            android:minWidth="0dp"
-                            android:paddingHorizontal="10dp"
-                            android:paddingVertical="0dp"
-                            android:text="今日は眠る"
-                            android:textColor="@color/bg_void"
-                            android:textSize="10sp"
-                            android:textStyle="bold"
-                            android:visibility="gone" />
-                    </LinearLayout>
                 </LinearLayout>
 
-                <!-- 3. Simplified 24H Trend Graph Card -->
+                <!-- 2. Simplified 24H Trend Graph Card -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -442,9 +364,9 @@
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:fontFamily="monospace"
-                            android:text=":: TODAY_TREND // 24H_TIMELINE"
+                            android:text="利用タイムライン"
                             android:textColor="@color/accent_cyan"
-                            android:textSize="11sp"
+                            android:textSize="11.5sp"
                             android:textStyle="bold" />
 
                         <Button
@@ -516,7 +438,7 @@
                         android:fontFamily="monospace"
                         android:paddingHorizontal="8dp"
                         android:paddingVertical="5dp"
-                        android:text="グラフをタップ・なぞると指定秒のアプリと使用秒数を表示します"
+                        android:text="グラフをタップ・なぞると該当時刻のアプリと利用時間を表示します"
                         android:textColor="@color/accent_lime"
                         android:textSize="10.5sp" />
 
@@ -533,11 +455,11 @@
                         android:orientation="vertical" />
                 </LinearLayout>
 
-                <!-- 4. Top Usage Apps Card (Top 3-5 with Progress Bar & Tap Action Sheet) -->
+                <!-- 3. Top Usage Apps Card (Top 5 with Comparative Bar) -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="8dp"
+                    android:layout_marginBottom="12dp"
                     android:background="@drawable/bg_tactical_card"
                     android:orientation="vertical"
                     android:padding="14dp">
@@ -554,15 +476,15 @@
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:fontFamily="monospace"
-                            android:text=":: TOP_USAGE_APPS // 利用時間トップ5"
+                            android:text="利用時間ランキング"
                             android:textColor="@color/accent_lime"
-                            android:textSize="11sp"
+                            android:textSize="11.5sp"
                             android:textStyle="bold" />
 
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="行タップで操作"
+                            android:text="タップで制限設定"
                             android:textColor="@color/text_secondary"
                             android:textSize="10sp" />
                     </LinearLayout>
@@ -572,6 +494,112 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="vertical" />
+                </LinearLayout>
+
+                <!-- 4. Assistant Section: Character Dialogue & Quick Relaxation Actions -->
+                <LinearLayout
+                    android:id="@+id/layoutAssistantCard"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:background="@drawable/bg_tactical_card"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="10dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:fontFamily="monospace"
+                            android:text="CURA // アシスタント"
+                            android:textColor="@color/accent_cyan"
+                            android:textSize="11.5sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="タップでセリフ更新"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="10sp" />
+                    </LinearLayout>
+
+                    <!-- Speech Bubble Container -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="@color/bg_surface"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="12dp">
+
+                        <ImageView
+                            android:layout_width="48dp"
+                            android:layout_height="48dp"
+                            android:layout_marginEnd="12dp"
+                            android:adjustViewBounds="true"
+                            android:contentDescription="Cura Assistant"
+                            android:scaleType="fitCenter"
+                            android:src="@drawable/cura_peeking_chibi" />
+
+                        <TextView
+                            android:id="@+id/tvHeroCuraMessage"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:lineSpacingExtra="3dp"
+                            android:text="マスター、今日もスマホの使いすぎに気をつけて一緒にがんばりましょうねっ！"
+                            android:textColor="@color/text_primary"
+                            android:textSize="12.5sp" />
+                    </LinearLayout>
+
+                    <!-- Action Buttons Row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <Button
+                            android:id="@+id/btnHeroBlock30s"
+                            android:layout_width="0dp"
+                            android:layout_height="34dp"
+                            android:layout_weight="1"
+                            android:backgroundTint="@color/accent_mint"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:paddingHorizontal="10dp"
+                            android:paddingVertical="0dp"
+                            android:text="1回だけ深呼吸する"
+                            android:textColor="@color/bg_void"
+                            android:textSize="10.5sp"
+                            android:textStyle="bold" />
+
+                        <Button
+                            android:id="@+id/btnHeroSleep1h"
+                            android:layout_width="wrap_content"
+                            android:layout_height="34dp"
+                            android:layout_marginStart="8dp"
+                            android:backgroundTint="@color/accent_pastel_cyan"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:minWidth="0dp"
+                            android:paddingHorizontal="12dp"
+                            android:paddingVertical="0dp"
+                            android:text="今日は眠る"
+                            android:textColor="@color/bg_void"
+                            android:textSize="10.5sp"
+                            android:textStyle="bold"
+                            android:visibility="gone" />
+                    </LinearLayout>
                 </LinearLayout>
             </LinearLayout>
 

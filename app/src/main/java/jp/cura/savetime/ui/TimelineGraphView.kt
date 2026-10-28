@@ -211,9 +211,13 @@ class TimelineGraphView @JvmOverloads constructor(
             if (visibleBars.isNotEmpty()) visibleBars else dayBars
         )
 
-        // 軸単位ヘッダ表示
-        canvas.drawText("縦:秒(s)", 2f * density, 12f * density, axisUnitPaint)
-        val rangeText = "横軸: ${windowStartSec}s - ${windowEndSec}s / 86400s (${TimelineGraphCalculator.formatHourMinute(windowStartSec, jp.cura.savetime.manager.DailyGoalManager.LOGICAL_DAY_BASE_HOUR)}-${TimelineGraphCalculator.formatHourMinute(windowEndSec, jp.cura.savetime.manager.DailyGoalManager.LOGICAL_DAY_BASE_HOUR)})"
+        // 軸単位ヘッダ表示（簡潔な表現に整理）
+        canvas.drawText("利用時間", 2f * density, 12f * density, axisUnitPaint)
+        val rangeText = if (windowSpanSec >= TimelineGraphCalculator.SECONDS_PER_DAY) {
+            "04:00〜翌04:00"
+        } else {
+            "${TimelineGraphCalculator.formatHourMinute(windowStartSec, jp.cura.savetime.manager.DailyGoalManager.LOGICAL_DAY_BASE_HOUR)}〜${TimelineGraphCalculator.formatHourMinute(windowEndSec, jp.cura.savetime.manager.DailyGoalManager.LOGICAL_DAY_BASE_HOUR)}"
+        }
         val rangeTextWidth = labelPaint.measureText(rangeText)
         canvas.drawText(
             rangeText,
@@ -222,7 +226,7 @@ class TimelineGraphView @JvmOverloads constructor(
             labelPaint
         )
 
-        // 縦軸（秒）グリッド線と秒ラベル (0s, 25%, 50%, 75%, 100%)
+        // 縦軸グリッド線と時間ラベル (0, 25%, 50%, 75%, 100%)
         val ySteps = 4
         for (i in 0..ySteps) {
             val ratio = i.toFloat() / ySteps
@@ -231,7 +235,7 @@ class TimelineGraphView @JvmOverloads constructor(
 
             canvas.drawLine(plotLeft, yPos, plotRight, yPos, if (i == 0) axisPaint else gridPaint)
 
-            val yLabel = "${yValSec}s"
+            val yLabel = if (yValSec == 0L) "0" else TimelineGraphCalculator.formatDurationClean(yValSec)
             val textWidth = labelPaint.measureText(yLabel)
             canvas.drawText(
                 yLabel,

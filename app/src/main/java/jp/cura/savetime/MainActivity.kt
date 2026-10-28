@@ -448,17 +448,18 @@ class MainActivity : AppCompatActivity() {
         bar: jp.cura.savetime.tracker.TimelineBar?,
         inspectedSec: Int
     ) {
+        val baseHour = jp.cura.savetime.manager.DailyGoalManager.LOGICAL_DAY_BASE_HOUR
         if (bar != null) {
-            val startStr = TimelineGraphCalculator.formatSecondOfDay(bar.startSecondOfDay)
-            val endStr = TimelineGraphCalculator.formatSecondOfDay(bar.endSecondOfDay)
+            val startStr = TimelineGraphCalculator.formatSecondOfDay(bar.startSecondOfDay, baseHour)
+            val endStr = TimelineGraphCalculator.formatSecondOfDay(bar.endSecondOfDay, baseHour)
             val cleanDur = TimelineGraphCalculator.formatDurationClean(bar.durationSeconds)
             binding.tvTimelineInspector.text =
-                "[$startStr-$endStr] ${bar.appName} : $cleanDur"
+                "[$startStr〜$endStr] ${bar.appName} : $cleanDur"
             binding.tvTimelineInspector.setTextColor(ContextCompat.getColor(this, R.color.accent_lime))
         } else {
-            val timeStr = TimelineGraphCalculator.formatSecondOfDay(inspectedSec)
+            val timeStr = TimelineGraphCalculator.formatSecondOfDay(inspectedSec, baseHour)
             binding.tvTimelineInspector.text =
-                "[$timeStr ($inspectedSec/86400s)] 使用記録なし"
+                "[$timeStr] 該当時刻の利用記録なし"
             binding.tvTimelineInspector.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
         }
     }
@@ -793,21 +794,8 @@ class MainActivity : AppCompatActivity() {
     private fun showTapSummaryInHero() {
         val recentOrActive = UsageMonitorService.tracker.getMostRecentOrActiveApp()
         val appName = recentOrActive?.second ?: "スマホ"
-        val todayAppSec = UsageMonitorService.tracker.getTodayAppUsageSeconds(recentOrActive?.first)
-        val screenSec = UsageMonitorService.tracker.getTotalContinuousScreenDurationMs() / 1000L
-        val todayTotalSec = UsageMonitorService.tracker.getTodayTotalPhoneUsageSeconds()
-        val remainMin = (30L - (screenSec / 60L)).coerceAtLeast(0L)
-
         val catalog = CuraMessageCatalog.load(this)
-        binding.tvHeroCuraMessage.text = catalog.formatTapMessage(
-            appName = appName,
-            appMinutes = todayAppSec / 60L,
-            screenMinutes = screenSec / 60L,
-            remainingBudgetMinutes = remainMin,
-            todayAppSeconds = todayAppSec,
-            continuousScreenSeconds = screenSec,
-            todayTotalPhoneSeconds = todayTotalSec
-        )
+        binding.tvHeroCuraMessage.text = catalog.formatShortTapMessage(appName)
     }
 
     private fun updateHeroAssistantMessage(
@@ -817,12 +805,49 @@ class MainActivity : AppCompatActivity() {
         todayTotalSec: Long
     ) {
         val appName = targetAppName ?: "スマホ"
-        val appDayStr = TimelineGraphCalculator.formatDurationClean(todayAppSec)
-        val screenContStr = TimelineGraphCalculator.formatDurationClean(screenSec)
-        val phoneDayStr = TimelineGraphCalculator.formatDurationClean(todayTotalSec)
+        val screenMin = screenSec / 60L
+        val appMin = todayAppSec / 60L
+        val catalog = CuraMessageCatalog.load(this)
 
-        binding.tvHeroCuraMessage.text =
-            "【${appName}】1日累計: $appDayStr / 画面連続: $screenContStr / 1日のスマホ累計: $phoneDayStr"
+        val message = when {
+            screenMin >= 30L -> {
+                catalog.formatScreenIntervalMessage(
+                    appName = appName,
+                    appMinutes = appMin,
+                    screenMinutes = screenMin,
+                    remainingBudgetMinutes = (30L - screenMin).coerceAtLeast(0L),
+                    todayAppSeconds = todayAppSec,
+                    continuousScreenSeconds = screenSec,
+                    todayTotalPhoneSeconds = todayTotalSec
+                )
+            }
+            screenMin >= 15L -> {
+                catalog.formatScreenIntervalMessage(
+                    appName = appName,
+                    appMinutes = appMin,
+                    screenMinutes = screenMin,
+                    remainingBudgetMinutes = (30L - screenMin).coerceAtLeast(0L),
+                    todayAppSeconds = todayAppSec,
+                    continuousScreenSeconds = screenSec,
+                    todayTotalPhoneSeconds = todayTotalSec
+                )
+            }
+            targetAppName != null && targetAppName != "待機中" && appMin >= 15L -> {
+                catalog.formatAppIntervalMessage(
+                    appName = appName,
+                    appMinutes = appMin,
+                    screenMinutes = screenMin,
+                    remainingBudgetMinutes = (30L - screenMin).coerceAtLeast(0L),
+                    todayAppSeconds = todayAppSec,
+                    continuousScreenSeconds = screenSec,
+                    todayTotalPhoneSeconds = todayTotalSec
+                )
+            }
+            else -> {
+                catalog.formatShortTapMessage(appName)
+            }
+        }
+        binding.tvHeroCuraMessage.text = message
     }
 
     private fun renderTimelineList() {
@@ -833,7 +858,7 @@ class MainActivity : AppCompatActivity() {
 
         if (timeline.isEmpty()) {
             binding.layoutMicroLogAccordion.visibility = View.GONE
-            binding.tvTimelineInspector.text = "グラフ待機中（横軸: 0〜86400秒 / 縦軸: 秒）"
+            binding.tvTimelineInspector.text = "グラフ待機中（04:00〜翌04:00）"
             binding.tvTimelineInspector.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
             val emptyTv = TextView(this).apply {
                 text = "まだアプリ切り替え履歴がありません（別アプリを開くと記録されます）"
@@ -1104,12 +1129,15 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val totalAllSec = mergedList.sumOf { it.third }.coerceAtLeast(1L)
+        val maxSec = mergedList.firstOrNull()?.third?.coerceAtLeast(1L) ?: 1L
+        val todayTotalPhoneSec = UsageMonitorService.tracker.getTodayTotalPhoneUsageSeconds().coerceAtLeast(1L)
         val density = resources.displayMetrics.density
 
         mergedList.forEachIndexed { index, item ->
             val (pkg, appName, totalSec) = item
-            val pct = ((totalSec * 100L) / totalAllSec).toInt().coerceIn(2, 100)
+            val barRatio = ((totalSec * 100L) / maxSec).toInt().coerceIn(3, 100)
+            val dayPct = ((totalSec * 100L) / todayTotalPhoneSec).toInt()
+            val pctLabel = if (dayPct < 1 && totalSec > 0) "<1%" else "${dayPct}%"
             val isGhost = ghostAppsStore.getGhostPackages().contains(pkg)
 
             val itemContainer = LinearLayout(this).apply {
@@ -1130,9 +1158,9 @@ class MainActivity : AppCompatActivity() {
             val rankTv = TextView(this).apply {
                 text = "#${index + 1}"
                 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent_cyan))
-                textSize = 11.5f
+                textSize = 12f
                 typeface = android.graphics.Typeface.MONOSPACE
-                layoutParams = LinearLayout.LayoutParams((28 * density).toInt(), LinearLayout.LayoutParams.WRAP_CONTENT)
+                layoutParams = LinearLayout.LayoutParams((24 * density).toInt(), LinearLayout.LayoutParams.WRAP_CONTENT)
             }
 
             val iconView = ImageView(this).apply {
@@ -1152,6 +1180,8 @@ class MainActivity : AppCompatActivity() {
                 text = if (isGhost) "$appName [透過]" else appName
                 setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
                 textSize = 13f
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
 
@@ -1163,9 +1193,9 @@ class MainActivity : AppCompatActivity() {
             val durationColor = ContextCompat.getColor(this, durationColorRes)
 
             val durationTv = TextView(this).apply {
-                text = "${TimelineGraphCalculator.formatDurationClean(totalSec)} (${pct}%)"
+                text = "${TimelineGraphCalculator.formatDurationClean(totalSec)} ($pctLabel)"
                 setTextColor(durationColor)
-                textSize = 11.5f
+                textSize = 12f
                 typeface = android.graphics.Typeface.MONOSPACE
                 setPadding(8, 0, 4, 0)
             }
@@ -1180,10 +1210,10 @@ class MainActivity : AppCompatActivity() {
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     (5 * density).toInt()
                 ).apply {
-                    topMargin = (5 * density).toInt()
+                    topMargin = (6 * density).toInt()
                 }
                 max = 100
-                progress = pct
+                progress = barRatio
                 progressTintList = ColorStateList.valueOf(durationColor)
                 progressBackgroundTintList = ContextCompat.getColorStateList(this@MainActivity, R.color.bg_surface)
             }

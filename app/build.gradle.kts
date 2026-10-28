@@ -11,8 +11,8 @@ android {
         applicationId = "jp.cura.savetime"
         minSdk = 26
         targetSdk = 35
-        versionCode = 28
-        versionName = "2.4.1"
+        versionCode = 29
+        versionName = "2.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

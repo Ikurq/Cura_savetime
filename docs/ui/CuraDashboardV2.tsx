@@ -120,11 +120,11 @@ export default function CuraDashboardV2() {
         <main className="flex-1 overflow-y-auto p-3.5 space-y-3.5">
           {activeTab === "home" && (
             <>
-              {/* 2. ヒーローセクション（総利用状況 & キャラクター連動カード） */}
+              {/* 2. 本日の利用時間 */}
               <section className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-[#8B949E]">
-                    :: TODAY_TOTAL_USAGE // 本日累計
+                  <span className="font-mono text-[11px] font-bold text-[#38BDF8]">
+                    本日の利用時間
                   </span>
                   <span className="font-mono text-[10px] text-[#00E676]">
                     [ 計測中: Chrome 15分16秒 ]
@@ -181,7 +181,7 @@ export default function CuraDashboardV2() {
               <section className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-[11px] font-bold text-[#38BDF8]">
-                    :: TODAY_TREND // 24H_ACTIVITY
+                    利用タイムライン
                   </span>
                   <span className="font-mono text-[10px] text-[#8B949E]">
                     ピーク: 20時台 (39分)
@@ -222,7 +222,7 @@ export default function CuraDashboardV2() {
               <section className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-[11px] font-bold text-[#00E676]">
-                    :: TOP_USAGE_APPS // 利用時間トップ5
+                    利用時間ランキング
                   </span>
                   <span className="text-[10px] text-[#8B949E]">行タップで制限・設定</span>
                 </div>
