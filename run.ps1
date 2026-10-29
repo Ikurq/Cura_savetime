@@ -20,6 +20,26 @@ function Show-Help {
     Write-Host ""
 }
 
+# Ensure Java & Android SDK from environment if not present in current session PATH
+if (-not (Get-Command java -ErrorAction SilentlyContinue)) {
+    $javaHome = [System.Environment]::GetEnvironmentVariable("JAVA_HOME", "Machine")
+    if (-not $javaHome) {
+        $javaHome = [System.Environment]::GetEnvironmentVariable("JAVA_HOME", "User")
+    }
+    if ($javaHome -and (Test-Path "$javaHome\bin")) {
+        $env:JAVA_HOME = $javaHome
+        $env:Path = "$javaHome\bin;$env:Path"
+    }
+}
+
+if (-not (Get-Command adb -ErrorAction SilentlyContinue)) {
+    $androidHome = [System.Environment]::GetEnvironmentVariable("ANDROID_HOME", "User")
+    if ($androidHome) {
+        $env:ANDROID_HOME = $androidHome
+        $env:Path = "$androidHome\platform-tools;$androidHome\cmdline-tools\latest\bin;$env:Path"
+    }
+}
+
 $HasJava = $false
 try {
     $null = Get-Command java -ErrorAction Stop

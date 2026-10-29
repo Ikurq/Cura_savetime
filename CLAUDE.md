@@ -16,7 +16,7 @@ When given a feature or bug task:
 - Use calm, concise, and functional UI text without unnecessary filler.
 
 ## Common Task Commands
-- Run all checks (format + lint + test): `powershell -File ./run.ps1 check` or `./run.sh check` or `make check`
-- Run tests only: `powershell -File ./run.ps1 test` or `./run.sh test`
-- Run linter only: `powershell -File ./run.ps1 lint` or `./run.sh lint`
-- Run formatter: `powershell -File ./run.ps1 format` or `./run.sh format`
+- **Local Build & Test Environment**: Local machine has JDK 17 & Android SDK (API 35) configured. Always run tests/builds locally to preserve GitHub Actions quotas.
+- Run all checks (test + check build): `powershell -File ./run.ps1 check` (or `.\gradlew.bat testDebugUnitTest`)
+- Run tests only: `powershell -File ./run.ps1 test` (or `.\gradlew.bat :app:testDebugUnitTest`)
+- Build Debug APK: `powershell -File ./run.ps1 build` (or `.\gradlew.bat assembleDebug`)

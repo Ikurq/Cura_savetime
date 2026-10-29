@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Cura SaveTime</string>
+    <string name="app_name">Cura:WatchYou</string>
     <string name="hud_header">CURA_OS // TIME_DEFENSE_MONITOR v1.0</string>
     <string name="permission_required_title">:: USAGE_ACCESS_REQUIRED</string>
     <string name="permission_required_desc">連続使用時間を正確に計測するため、「使用状況へのアクセス」権限が必要です。</string>

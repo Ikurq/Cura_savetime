@@ -24,6 +24,11 @@ object DailyGoalManager {
     const val MINIMUM_GOAL_SECONDS = 30 * 60L // 最小目標: 30分
     const val REDUCTION_RATE = 0.10 // 先週から10%削減
 
+    // Cura アラーム連携定数
+    const val CURA_ALARM_PACKAGE = "com.example.voicevox"
+    const val ACTION_CURA_ALARM_STARTED = "jp.cura.action.ALARM_STARTED"
+    const val ACTION_CURA_ALARM_DISMISSED = "jp.cura.action.ALARM_DISMISSED"
+
     /**
      * 22:00〜04:00の時間帯（夜間「今日は眠る」ブロック利用可能時間）かを判定
      */
@@ -211,5 +216,17 @@ object DailyGoalManager {
         getPrefs(context).edit()
             .putLong(KEY_LAST_MORNING_LOCK_DAY_MS, logicalDayStart)
             .apply()
+    }
+
+    /**
+     * アラーム鳴動中またはCuraのアラーム画面が表示中であるため、朝イチ起床ロックの発動を保留（待機）すべきか判定
+     */
+    fun shouldDeferMorningWakeupLock(
+        isAlarmActive: Boolean,
+        foregroundPackage: String?
+    ): Boolean {
+        if (isAlarmActive) return true
+        if (foregroundPackage == CURA_ALARM_PACKAGE) return true
+        return false
     }
 }

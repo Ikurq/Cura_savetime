@@ -70,5 +70,10 @@ temp/
 build_artifacts/
 *.apk
 
+# Android & Gradle
+.gradle/
+local.properties
+**/build/
+
 dist/
 

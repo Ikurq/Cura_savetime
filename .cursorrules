@@ -11,9 +11,10 @@ When given a feature request or bug report:
 5. Report completion with verified results.
 
 ## 1. Quality & Verification
-- Execute `./run.ps1 test` (or `./run.sh test`) after modifying code.
+- JDK 17 & Android SDK (API 35) are installed locally. To preserve GitHub Actions minutes, always run `./run.ps1 test` or `.\gradlew.bat :app:testDebugUnitTest` locally.
+- Execute `./run.ps1 test` (or `.\gradlew.bat :app:testDebugUnitTest`) after modifying code.
 - Verify tests pass before reporting completion.
-- Run `./run.ps1 format` (or `./run.sh format`) to keep formatting clean.
+- Verify APK build with `./run.ps1 build` (or `.\gradlew.bat assembleDebug`) when modifying app packaging.
 
 ## 2. Architecture & Standards
 - Keep functions small, modular, and single-purpose.

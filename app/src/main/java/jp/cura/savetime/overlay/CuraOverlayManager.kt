@@ -429,7 +429,10 @@ class CuraOverlayManager(private val context: Context) {
         }
     }
 
-    fun stopThirtySecondBlock() {
+    val isBlockerShowing: Boolean
+        get() = blockerView != null
+
+    fun stopScreenBlock() {
         mainHandler.removeCallbacks(blockerTickRunnable)
         blockerView?.let {
             try {
@@ -438,6 +441,10 @@ class CuraOverlayManager(private val context: Context) {
         }
         blockerView = null
         blockerRemainingSec = 0
+    }
+
+    fun stopThirtySecondBlock() {
+        stopScreenBlock()
     }
 
     /**

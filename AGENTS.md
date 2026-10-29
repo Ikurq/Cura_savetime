@@ -1,6 +1,6 @@
 # AI Agent Instructions & Guidelines
 
-You are an autonomous AI coding assistant working in this repository. Follow these strict guidelines:
+This project strictly adheres to all Global Rules defined in `~/.gemini/config/AGENTS.md` (Japanese output, No emojis/AI slop, Local-first builds, KISS/YAGNI, Guard clauses, No destructive commands without confirmation).
 
 ## ⚡ Autonomous Execution (Auto-Pilot Rule)
 When the user gives a brief instruction (e.g. "Create feature X", "Fix bug Y", "〇〇作って"):
@@ -12,9 +12,10 @@ When the user gives a brief instruction (e.g. "Create feature X", "Fix bug Y", "
 5. **Report**: Present the final diff and test results cleanly.
 
 ## 1. Quality & Verification Rules
-- **Run Tests**: After modifying any code, execute `./run.ps1 test` (or `./run.sh test`). Never mark a task as completed without verifying that tests pass.
-- **Run Linter & Formatter**: Always run `./run.ps1 format` and `./run.ps1 lint` before finishing your edits. Ensure 0 lint errors and clean formatting.
-- **Run All Checks**: Use `./run.ps1 check` (or `./run.sh check` / `make check`) to verify formatting, linting, and tests in one step.
+- **Local Build & Test Environment (JDK 17 & Android SDK)**: The Windows local machine / Antigravity remote environment has **JDK 17 (Temurin)** and **Android SDK (API 35)** fully configured. To prevent exhausting GitHub Actions CI minutes, **always run tests and builds locally via `./run.ps1` or `gradlew.bat`** instead of relying on remote CI runs.
+- **Run Tests**: After modifying any code, execute `./run.ps1 test` (or `.\gradlew.bat :app:testDebugUnitTest`). Never mark a task as completed without verifying that tests pass.
+- **Build APK Verification**: When completing a feature or bugfix, verify packaging with `./run.ps1 build` (or `.\gradlew.bat assembleDebug`).
+- **Run All Checks**: Use `./run.ps1 check` (runs tests and checks buildability in seconds) before finalizing.
 - **Do Not Break Existing Functionality**: Maintain backwards compatibility unless explicitly requested otherwise.
 - **Follow Workflow**: For non-trivial features, follow the workflow outlined in `docs/WORKFLOW.md` (Spec -> Tasks -> TDD).
 

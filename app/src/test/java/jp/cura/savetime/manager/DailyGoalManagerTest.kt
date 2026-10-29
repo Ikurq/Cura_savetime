@@ -91,6 +91,24 @@ class DailyGoalManagerTest {
     }
 
     @Test
+    fun testShouldDeferMorningWakeupLock_whenAlarmActiveOrCuraForeground() {
+        // 1. アラーム鳴動中は保留すべき
+        assertTrue(DailyGoalManager.shouldDeferMorningWakeupLock(isAlarmActive = true, foregroundPackage = null))
+
+        // 2. Cura (com.example.voicevox) がフォアグラウンド表示中は保留すべき
+        assertTrue(DailyGoalManager.shouldDeferMorningWakeupLock(isAlarmActive = false, foregroundPackage = "com.example.voicevox"))
+
+        // 3. 両方該当する場合も保留すべき
+        assertTrue(DailyGoalManager.shouldDeferMorningWakeupLock(isAlarmActive = true, foregroundPackage = "com.example.voicevox"))
+
+        // 4. アラーム停止中かつ別アプリ（SNS等）の場合は即時発動（保留しない）
+        assertFalse(DailyGoalManager.shouldDeferMorningWakeupLock(isAlarmActive = false, foregroundPackage = "com.twitter.android"))
+
+        // 5. アラーム停止中かつホーム画面/未判定の場合は即時発動（保留しない）
+        assertFalse(DailyGoalManager.shouldDeferMorningWakeupLock(isAlarmActive = false, foregroundPackage = null))
+    }
+
+    @Test
     fun testTimelineGraphCalculator_formatWithBaseHour4() {
         // 朝4時基準の場合、secondOfDay = 0 は "04:00"
         assertEquals("04:00", TimelineGraphCalculator.formatHourMinute(0, baseHour = 4))
