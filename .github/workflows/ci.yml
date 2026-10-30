@@ -82,12 +82,11 @@ jobs:
         if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.5.0
-          name: "Cura:WatchYou v2.5.0"
+          tag_name: v2.6.0
+          name: "Cura:WatchYou v2.6.0"
           body: |
             ### Changed
-            - Cura:CareYouのアラームとの画面占有競合を解消
-            - アラーム鳴動中は起床ロックを保留し、アラーム停止後に起床ロックを発動するバトンタッチ連携を追加
-            - アラーム鳴動検知時のブロック即時退避セーフティを追加
+            - アプリ名称を「Cura:WatchYou」に更新
+            - 1時間予算・時間帯別配分・貯金繰り越しシステムを撤廃し、連続使用見守り・画面休憩ロック機能に集中
           fail_on_unmatched_files: true
           files: app/build/outputs/apk/debug/*.apk
