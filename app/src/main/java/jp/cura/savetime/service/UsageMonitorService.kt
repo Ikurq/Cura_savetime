@@ -175,6 +175,7 @@ class UsageMonitorService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         isRunning = true
+        broadcastState()
         startForeground(NOTIFICATION_ID_MONITOR, buildMonitorNotification("監視待機中...", 0L))
 
         if (overlayManager.canDrawOverlay()) {
@@ -515,6 +516,7 @@ class UsageMonitorService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        broadcastState()
         serviceJob.cancel()
         overlayManager.removeOverlay()
         try {

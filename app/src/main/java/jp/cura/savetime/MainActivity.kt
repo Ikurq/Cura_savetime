@@ -52,6 +52,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var ghostAppsStore: GhostAppsStore
     private var currentTabIndex: Int = 0
     private var isMicroLogExpanded: Boolean = false
+    private var isUpdatingSwitchUi: Boolean = false
+    private var pendingServiceState: Boolean? = null
 
     private val stateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -144,16 +146,24 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.switchMonitorDaemon.setOnCheckedChangeListener { _, isChecked ->
+            if (isUpdatingSwitchUi) return@setOnCheckedChangeListener
+
             if (isChecked) {
                 if (!hasUsageStatsPermission()) {
+                    isUpdatingSwitchUi = true
                     binding.switchMonitorDaemon.isChecked = false
+                    isUpdatingSwitchUi = false
                     startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
                     return@setOnCheckedChangeListener
                 }
+                pendingServiceState = true
+                updateServiceStatusText(true)
                 if (!UsageMonitorService.isRunning) {
                     startMonitorService()
                 }
             } else {
+                pendingServiceState = false
+                updateServiceStatusText(false)
                 if (UsageMonitorService.isRunning) {
                     stopMonitorService()
                 }
@@ -642,6 +652,18 @@ class MainActivity : AppCompatActivity() {
         updateUiState()
     }
 
+    private fun updateServiceStatusText(isRunning: Boolean) {
+        if (isRunning) {
+            binding.welcomeTitle.text = "CURA_SYSTEM: ACTIVE"
+            binding.welcomeTitle.setTextColor(ContextCompat.getColor(this, R.color.accent_cyan))
+            binding.hudFlavorText.text = "OBSERVATION MODE / ACTIVE"
+        } else {
+            binding.welcomeTitle.text = "CURA_SYSTEM: STANDBY"
+            binding.welcomeTitle.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
+            binding.hudFlavorText.text = "OBSERVATION MODE / STANDBY"
+        }
+    }
+
     private fun formatHms(totalSec: Long): String {
         val h = totalSec / 3600L
         val m = (totalSec % 3600L) / 60L
@@ -657,19 +679,21 @@ class MainActivity : AppCompatActivity() {
         binding.btnQuickSleep1h.visibility = if (isSleepTime) View.VISIBLE else View.GONE
 
         val isRunning = UsageMonitorService.isRunning
-        if (binding.switchMonitorDaemon.isChecked != isRunning) {
-            binding.switchMonitorDaemon.isChecked = isRunning
+        if (pendingServiceState == isRunning) {
+            pendingServiceState = null
+        }
+        val effectiveRunning = pendingServiceState ?: isRunning
+
+        if (binding.switchMonitorDaemon.isChecked != effectiveRunning) {
+            isUpdatingSwitchUi = true
+            try {
+                binding.switchMonitorDaemon.isChecked = effectiveRunning
+            } finally {
+                isUpdatingSwitchUi = false
+            }
         }
 
-        if (isRunning) {
-            binding.welcomeTitle.text = "CURA_SYSTEM: ACTIVE"
-            binding.welcomeTitle.setTextColor(ContextCompat.getColor(this, R.color.accent_cyan))
-            binding.hudFlavorText.text = "OBSERVATION MODE / ACTIVE"
-        } else {
-            binding.welcomeTitle.text = "CURA_SYSTEM: STANDBY"
-            binding.welcomeTitle.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
-            binding.hudFlavorText.text = "OBSERVATION MODE / STANDBY"
-        }
+        updateServiceStatusText(effectiveRunning)
 
         // First feed timeline data to graph so app summaries are up to date
         val timeline = UsageMonitorService.tracker.getTimeline()
