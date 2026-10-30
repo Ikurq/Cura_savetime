@@ -26,13 +26,23 @@
 
             <TextView
                 android:id="@+id/tvBalloonHeader"
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_weight="1"
                 android:fontFamily="monospace"
-                android:text=":: CURA // WATCH_YOU"
+                android:text=":: CURA // TIME"
                 android:textColor="@color/accent_cyan"
                 android:textSize="10sp"
                 android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvBalloonRuleTag"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:text="[通常帯]"
+                android:textColor="@color/text_secondary"
+                android:textSize="10sp" />
         </LinearLayout>
 
         <!-- 1. 常時表示: 対象アプリ名 + 画面連続使用時間 + [▼詳細] トグル -->
@@ -113,6 +123,18 @@
                 android:text="1日のスマホ累計: 0秒"
                 android:textColor="@color/text_primary"
                 android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/tvBalloonAlertWarning"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:fontFamily="monospace"
+                android:text="連続上限（30分）超過"
+                android:textColor="@color/accent_crimson"
+                android:textSize="10.5sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
         </LinearLayout>
 
         <!-- 1. 常時表示: キャラクターのセリフ枠 -->
@@ -127,6 +149,37 @@
             android:text="えへへ、呼びましたか？無理せずマイペースでいきましょうねっ！"
             android:textColor="@color/text_primary"
             android:textSize="11.5sp" />
+
+        <!-- 1. 常時表示: 30秒マイクロアクション（画面ブロック）ボタン -->
+        <Button
+            android:id="@+id/btnBalloonBlock30s"
+            android:layout_width="match_parent"
+            android:layout_height="34dp"
+            android:layout_marginTop="6dp"
+            android:backgroundTint="@color/accent_mint"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:paddingVertical="0dp"
+            android:text="1回だけ深呼吸する (30秒)"
+            android:textColor="@color/bg_void"
+            android:textSize="10.5sp"
+            android:textStyle="bold" />
+
+        <!-- 2. 22:00〜04:00 限定表示: 今日は眠る（1時間画面ブロック）ボタン -->
+        <Button
+            android:id="@+id/btnBalloonSleep1h"
+            android:layout_width="match_parent"
+            android:layout_height="34dp"
+            android:layout_marginTop="5dp"
+            android:backgroundTint="@color/accent_pastel_cyan"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:paddingVertical="0dp"
+            android:text="今日は眠る (1時間ブロック)"
+            android:textColor="@color/bg_void"
+            android:textSize="10.5sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
     </LinearLayout>
 
     <!-- DesktopMate Style: Peeking Chibi Cura on Right Screen Edge -->

@@ -301,8 +301,6 @@
                             android:textSize="9.5sp"
                             android:visibility="gone" />
                     </LinearLayout>
-
-
                 </LinearLayout>
 
                 <!-- 2. Simplified 24H Trend Graph Card -->
@@ -522,7 +520,46 @@
                             android:textSize="12.5sp" />
                     </LinearLayout>
 
+                    <!-- Action Buttons Row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
 
+                        <Button
+                            android:id="@+id/btnHeroBlock30s"
+                            android:layout_width="0dp"
+                            android:layout_height="34dp"
+                            android:layout_weight="1"
+                            android:backgroundTint="@color/accent_mint"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:paddingHorizontal="10dp"
+                            android:paddingVertical="0dp"
+                            android:text="1回だけ深呼吸する"
+                            android:textColor="@color/bg_void"
+                            android:textSize="10.5sp"
+                            android:textStyle="bold" />
+
+                        <Button
+                            android:id="@+id/btnHeroSleep1h"
+                            android:layout_width="wrap_content"
+                            android:layout_height="34dp"
+                            android:layout_marginStart="8dp"
+                            android:backgroundTint="@color/accent_pastel_cyan"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:minWidth="0dp"
+                            android:paddingHorizontal="12dp"
+                            android:paddingVertical="0dp"
+                            android:text="今日は眠る"
+                            android:textColor="@color/bg_void"
+                            android:textSize="10.5sp"
+                            android:textStyle="bold"
+                            android:visibility="gone" />
+                    </LinearLayout>
                 </LinearLayout>
             </LinearLayout>
 
@@ -664,6 +701,32 @@
                             android:layout_height="wrap_content" />
                     </LinearLayout>
 
+                    <Button
+                        android:id="@+id/btnQuickBlock30s"
+                        android:layout_width="match_parent"
+                        android:layout_height="38dp"
+                        android:layout_marginTop="10dp"
+                        android:backgroundTint="@color/accent_mint"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:text="1回だけ深呼吸する (30秒ブロック)"
+                        android:textColor="@color/bg_void"
+                        android:textSize="11.5sp"
+                        android:textStyle="bold" />
+
+                    <Button
+                        android:id="@+id/btnQuickSleep1h"
+                        android:layout_width="match_parent"
+                        android:layout_height="38dp"
+                        android:layout_marginTop="6dp"
+                        android:backgroundTint="@color/accent_pastel_cyan"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:text="今日は眠る (1時間画面ブロック・22時〜4時限定)"
+                        android:textColor="@color/bg_void"
+                        android:textSize="11.5sp"
+                        android:textStyle="bold"
+                        android:visibility="gone" />
                 </LinearLayout>
 
                 <!-- Game / Ghost Mode Card -->

@@ -88,6 +88,12 @@ class UsageMonitorService : Service() {
 
         @Volatile
         var shouldReloadMessageCatalog = false
+
+        @Volatile
+        var shouldTriggerThirtySecondBlock = false
+
+        @Volatile
+        var shouldTriggerOneHourSleepBlock = false
     }
 
     private val serviceJob = Job()
@@ -99,12 +105,44 @@ class UsageMonitorService : Service() {
     private lateinit var overlayManager: CuraOverlayManager
     private lateinit var ghostAppsStore: jp.cura.savetime.util.GhostAppsStore
 
+    @Volatile
+    private var isAlarmActive = false
+
+    @Volatile
+    private var isMorningWakeupLockPending = false
+
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val now = System.currentTimeMillis()
             when (intent?.action) {
                 Intent.ACTION_SCREEN_OFF -> tracker.onScreenOff(now)
                 Intent.ACTION_SCREEN_ON -> tracker.onScreenOn(now)
+                Intent.ACTION_USER_PRESENT -> {
+                    val currentPkg = tracker.getCurrentSession()?.packageName ?: tracker.getMostRecentOrActiveApp()?.first
+                    val shouldDefer = DailyGoalManager.shouldDeferMorningWakeupLock(isAlarmActive, currentPkg)
+                    if (shouldDefer) {
+                        if (DailyGoalManager.shouldTriggerMorningWakeupLock(this@UsageMonitorService, now)) {
+                            isMorningWakeupLockPending = true
+                        }
+                    } else {
+                        checkAndTriggerMorningWakeupLock(now)
+                    }
+                }
+                DailyGoalManager.ACTION_CURA_ALARM_STARTED -> {
+                    isAlarmActive = true
+                    if (overlayManager.isBlockerShowing) {
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            overlayManager.stopScreenBlock()
+                        }
+                    }
+                    if (DailyGoalManager.shouldTriggerMorningWakeupLock(this@UsageMonitorService, now)) {
+                        isMorningWakeupLockPending = true
+                    }
+                }
+                DailyGoalManager.ACTION_CURA_ALARM_DISMISSED -> {
+                    isAlarmActive = false
+                    triggerPendingMorningWakeupLockIfAllowed(now)
+                }
             }
         }
     }
@@ -124,6 +162,9 @@ class UsageMonitorService : Service() {
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_USER_PRESENT)
+            addAction(DailyGoalManager.ACTION_CURA_ALARM_STARTED)
+            addAction(DailyGoalManager.ACTION_CURA_ALARM_DISMISSED)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(screenReceiver, filter, Context.RECEIVER_EXPORTED)
@@ -197,7 +238,19 @@ class UsageMonitorService : Service() {
                     shouldReloadMessageCatalog = false
                     overlayManager.reloadMessageCatalog()
                 }
+                if (shouldTriggerThirtySecondBlock) {
+                    shouldTriggerThirtySecondBlock = false
+                    mainHandlerPostBlock()
+                }
+                if (shouldTriggerOneHourSleepBlock) {
+                    shouldTriggerOneHourSleepBlock = false
+                    mainHandlerPostSleepBlock()
+                }
 
+                // Cura アラーム終了またはCura離脱時の保留中朝イチ起床ロックのフェイルセーフ発動
+                if (isMorningWakeupLockPending && !isAlarmActive && targetPkg != DailyGoalManager.CURA_ALARM_PACKAGE) {
+                    triggerPendingMorningWakeupLockIfAllowed(now)
+                }
                 val isGhost = if (session != null && !session.isBufferActive) {
                     ghostAppsStore.isGhostModeApp(session.packageName)
                 } else {
@@ -220,6 +273,37 @@ class UsageMonitorService : Service() {
         }
 
         return START_STICKY
+    }
+
+    private fun checkAndTriggerMorningWakeupLock(nowMs: Long) {
+        if (DailyGoalManager.shouldTriggerMorningWakeupLock(this, nowMs)) {
+            DailyGoalManager.recordMorningWakeupLockTriggered(this, nowMs)
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                overlayManager.startMorningWakeupBlock(60)
+            }
+        }
+    }
+
+    private fun triggerPendingMorningWakeupLockIfAllowed(nowMs: Long) {
+        if (isMorningWakeupLockPending || DailyGoalManager.shouldTriggerMorningWakeupLock(this, nowMs)) {
+            isMorningWakeupLockPending = false
+            DailyGoalManager.recordMorningWakeupLockTriggered(this, nowMs)
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                overlayManager.startMorningWakeupBlock(60)
+            }, 800L)
+        }
+    }
+
+    private fun mainHandlerPostBlock() {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            overlayManager.startThirtySecondBlock(30)
+        }
+    }
+
+    private fun mainHandlerPostSleepBlock() {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            overlayManager.startOneHourSleepBlock(3600)
+        }
     }
 
     private fun detectAndRegisterDefaultLauncher() {
