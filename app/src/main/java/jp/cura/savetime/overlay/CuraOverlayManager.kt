@@ -17,7 +17,6 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -25,7 +24,6 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import jp.cura.savetime.R
 import jp.cura.savetime.limiter.FlexibleUsageLimitManager
-import jp.cura.savetime.manager.DailyGoalManager
 import jp.cura.savetime.tracker.TimelineGraphCalculator
 import jp.cura.savetime.util.CuraMessageCatalog
 import java.util.Locale
@@ -58,30 +56,8 @@ class CuraOverlayManager(private val context: Context) {
     private var tvBalloonAppDayTotal: TextView? = null
     private var tvBalloonPhoneDayTotal: TextView? = null
     private var tvBalloonDialogue: TextView? = null
-    private var tvBalloonBudgetRemaining: TextView? = null
-    private var tvBalloonRuleTag: TextView? = null
-    private var tvBalloonAlertWarning: TextView? = null
-    private var btnBalloonBlock30s: Button? = null
-    private var btnBalloonSleep1h: Button? = null
     private var layoutSideHandle: FrameLayout? = null
     private var ivCuraPeeking: ImageView? = null
-
-    // フルスクリーンブロック用オーバーレイ
-    private var blockerView: View? = null
-    private var blockerRemainingSec: Int = 0
-    private var blockerEndTimeMs: Long = 0L
-    private val blockerTickRunnable = object : Runnable {
-        override fun run() {
-            val now = System.currentTimeMillis()
-            val remSec = ((blockerEndTimeMs - now) / 1000L).coerceAtLeast(0L).toInt()
-            blockerRemainingSec = remSec
-            if (remSec <= 0) {
-                stopThirtySecondBlock()
-            } else {
-                mainHandler.postDelayed(this, 1000L)
-            }
-        }
-    }
 
     private var isBalloonVisible = false
     private var isDetailsExpanded = false
@@ -125,11 +101,6 @@ class CuraOverlayManager(private val context: Context) {
         tvBalloonAppDayTotal = view.findViewById(R.id.tvBalloonAppDayTotal)
         tvBalloonPhoneDayTotal = view.findViewById(R.id.tvBalloonPhoneDayTotal)
         tvBalloonDialogue = view.findViewById(R.id.tvBalloonDialogue)
-        tvBalloonBudgetRemaining = view.findViewById(R.id.tvBalloonBudgetRemaining)
-        tvBalloonRuleTag = view.findViewById(R.id.tvBalloonRuleTag)
-        tvBalloonAlertWarning = view.findViewById(R.id.tvBalloonAlertWarning)
-        btnBalloonBlock30s = view.findViewById(R.id.btnBalloonBlock30s)
-        btnBalloonSleep1h = view.findViewById(R.id.btnBalloonSleep1h)
         layoutSideHandle = view.findViewById(R.id.layoutSideHandle)
         ivCuraPeeking = view.findViewById(R.id.ivCuraPeeking)
 
@@ -143,14 +114,6 @@ class CuraOverlayManager(private val context: Context) {
         layoutBalloonSummaryRow?.setOnClickListener(detailsToggleListener)
         tvBalloonDetailToggle?.setOnClickListener(detailsToggleListener)
         tvBalloonDialogue?.setOnClickListener(detailsToggleListener)
-
-        btnBalloonBlock30s?.setOnClickListener {
-            startThirtySecondBlock(30)
-        }
-
-        btnBalloonSleep1h?.setOnClickListener {
-            startOneHourSleepBlock(3600)
-        }
 
         val layoutParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -281,173 +244,6 @@ class CuraOverlayManager(private val context: Context) {
     }
 
     /**
-     * 30秒間フルスクリーンで画面全体を覆い、あらゆるタッチ・戻る操作をブロックする
-     */
-    fun startThirtySecondBlock(durationSeconds: Int = 30) {
-        val action = jp.cura.savetime.util.RelaxActionCatalog.getRandomAction(context)
-        startScreenBlock(
-            durationSeconds = durationSeconds,
-            tagText = ":: CURA // SCREEN_RELAX_LOCK",
-            messageText = "マスター、${action}っ！\n\n画面を伏せて少しだけ体を休めましょうね。"
-        )
-    }
-
-    /**
-     * 朝4時以降のその日最初のロック解除時に発動する、朝イチ1分間強制起床ロック
-     */
-    fun startMorningWakeupBlock(durationSeconds: Int = 60) {
-        startScreenBlock(
-            durationSeconds = durationSeconds,
-            tagText = ":: CURA // MORNING_WAKEUP_LOCK",
-            messageText = "おはようございます、マスター！\n朝イチの強制起床ロックですっ。\nスマホを置いて目を覚ましましょう！"
-        )
-    }
-
-    /**
-     * 22:00〜04:00の時間帯に利用可能な、1時間（60分）の「今日は眠る」就寝ブロック
-     */
-    fun startOneHourSleepBlock(durationSeconds: Int = 3600) {
-        startScreenBlock(
-            durationSeconds = durationSeconds,
-            tagText = ":: CURA // SLEEP_DEFENSE_LOCK",
-            messageText = "マスター、今日もお疲れ様でした！\n「今日は眠る」モードを発動しましたっ。\n\n画面を伏せて、ぐっすりおやすみしてくださいね。"
-        )
-    }
-
-    /**
-     * 指定秒数フルスクリーンで画面全体を覆い、あらゆるタッチ・戻る操作をブロックする
-     */
-    @SuppressLint("ClickableViewAccessibility")
-    fun startScreenBlock(
-        durationSeconds: Int,
-        tagText: String,
-        messageText: String
-    ) {
-        if (!canDrawOverlay()) return
-        hideBalloon()
-
-        if (blockerView != null) {
-            blockerEndTimeMs = System.currentTimeMillis() + durationSeconds * 1000L
-            blockerRemainingSec = durationSeconds
-            return
-        }
-
-        blockerEndTimeMs = System.currentTimeMillis() + durationSeconds * 1000L
-        blockerRemainingSec = durationSeconds
-        val density = context.resources.displayMetrics.density
-
-        val container = object : LinearLayout(context) {
-            override fun dispatchKeyEvent(event: KeyEvent?): Boolean {
-                // 戻るキー等のキー操作もブロック
-                return true
-            }
-        }.apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setBackgroundColor(Color.parseColor("#F5080C10"))
-            setPadding((28 * density).toInt(), (32 * density).toInt(), (28 * density).toInt(), (32 * density).toInt())
-            isClickable = true
-            isFocusable = true
-            isFocusableInTouchMode = true
-            // 画面上のすべてのタッチイベントを吸収して背面へ一切通さない
-            setOnTouchListener { _, _ -> true }
-        }
-
-        val tagTv = TextView(context).apply {
-            text = tagText
-            setTextColor(ContextCompat.getColor(context, R.color.accent_cyan))
-            textSize = 12f
-            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-            gravity = Gravity.CENTER
-        }
-
-        val charImage = ImageView(context).apply {
-            setImageResource(R.drawable.cura_peeking_chibi)
-            adjustViewBounds = true
-            layoutParams = LinearLayout.LayoutParams(
-                (150 * density).toInt(),
-                (150 * density).toInt()
-            ).apply {
-                topMargin = (20 * density).toInt()
-                bottomMargin = (16 * density).toInt()
-            }
-        }
-
-        val messageTv = TextView(context).apply {
-            text = messageText
-            setTextColor(ContextCompat.getColor(context, R.color.text_primary))
-            textSize = 16f
-            gravity = Gravity.CENTER
-            setLineSpacing(6f * density, 1f)
-        }
-
-        val noteTv = TextView(context).apply {
-            text = "[ 時間が来たら自動で解除されます。ゆっくりお過ごしください ]"
-            setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
-            textSize = 12f
-            typeface = Typeface.MONOSPACE
-            gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                topMargin = (28 * density).toInt()
-            }
-        }
-
-        container.addView(tagTv)
-        container.addView(charImage)
-        container.addView(messageTv)
-        container.addView(noteTv)
-
-        val blockerParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            } else {
-                @Suppress("DEPRECATION")
-                WindowManager.LayoutParams.TYPE_PHONE
-            },
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_FULLSCREEN or
-                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.CENTER
-        }
-
-        blockerView = container
-
-        try {
-            windowManager.addView(container, blockerParams)
-            container.requestFocus()
-            mainHandler.removeCallbacks(blockerTickRunnable)
-            mainHandler.postDelayed(blockerTickRunnable, 1000L)
-        } catch (_: Exception) {
-            blockerView = null
-        }
-    }
-
-    val isBlockerShowing: Boolean
-        get() = blockerView != null
-
-    fun stopScreenBlock() {
-        mainHandler.removeCallbacks(blockerTickRunnable)
-        blockerView?.let {
-            try {
-                windowManager.removeView(it)
-            } catch (_: Exception) {}
-        }
-        blockerView = null
-        blockerRemainingSec = 0
-    }
-
-    fun stopThirtySecondBlock() {
-        stopScreenBlock()
-    }
-
-    /**
      * ゲーム中や指定アプリ使用時に「半透明＋当たり判定なし（タッチ透過）」を切り替える
      */
     private fun applyGhostModeState(isGhost: Boolean) {
@@ -469,10 +265,6 @@ class CuraOverlayManager(private val context: Context) {
             } catch (_: Exception) {}
         }
 
-        // ゴーストモード時はボタンや詳細トグルを非表示にして背面を透過、通常時は表示
-        btnBalloonBlock30s?.visibility = if (isGhost) View.GONE else View.VISIBLE
-        val isSleepAvailable = !isGhost && DailyGoalManager.isSleepBlockAvailable()
-        btnBalloonSleep1h?.visibility = if (isSleepAvailable) View.VISIBLE else View.GONE
         tvBalloonDetailToggle?.visibility = if (isGhost) View.GONE else View.VISIBLE
         ivCuraPeeking?.alpha = if (isGhost) 0.35f else 1.0f
         layoutBalloon?.alpha = if (isGhost) 0.72f else 0.96f
@@ -480,10 +272,6 @@ class CuraOverlayManager(private val context: Context) {
 
     private fun showBalloon(autoHideSec: Int = 0) {
         mainHandler.removeCallbacks(autoHideRunnable)
-        val action = jp.cura.savetime.util.RelaxActionCatalog.getRandomAction(context)
-        btnBalloonBlock30s?.text = "$action (30秒)"
-        val isSleepAvailable = !currentGhostMode && DailyGoalManager.isSleepBlockAvailable()
-        btnBalloonSleep1h?.visibility = if (isSleepAvailable) View.VISIBLE else View.GONE
         layoutBalloon?.visibility = View.VISIBLE
         isBalloonVisible = true
 
@@ -528,15 +316,9 @@ class CuraOverlayManager(private val context: Context) {
             val screenSecondsTotal = totalScreenDurationMs / 1000L
             val screenMinutes = totalScreenDurationMs / (60 * 1000L)
 
-            val activeRule = limitManager.getActiveRule()
-            val effectiveMinutes = maxOf(appMinutes, screenMinutes)
-            val remainingBudget = remainingBudgetMinutes ?: limitManager.calculateRemainingHourlyBudget(effectiveMinutes)
-            val isExceeded = limitManager.isContinuousLimitExceeded(effectiveMinutes)
-
             lastAppName = appName
             lastAppMinutes = appMinutes
             lastScreenMinutes = screenMinutes
-            lastRemainingBudget = remainingBudget
             lastTodayAppSeconds = todayAppDurationSec
             lastContinuousScreenSeconds = screenSecondsTotal
             lastTodayTotalPhoneSeconds = todayTotalPhoneDurationSec
@@ -546,25 +328,14 @@ class CuraOverlayManager(private val context: Context) {
             val screenContStr = TimelineGraphCalculator.formatDurationClean(screenSecondsTotal)
             val phoneDayStr = TimelineGraphCalculator.formatDurationClean(todayTotalPhoneDurationSec)
 
-            // 1. 常時表示要素の更新（ヘッダー、アプリ名、画面連続時間）
+            // 1. 常時表示要素の更新（アプリ名、画面連続時間）
             tvBalloonAppName?.text = "$appName$modeSuffix"
-            tvBalloonRuleTag?.text = if (!templateName.isNullOrBlank()) "[${activeRule.name} / $templateName]" else "[${activeRule.name}]"
             tvBalloonContinuousDuration?.text = "画面連続: $screenContStr"
+            tvBalloonContinuousDuration?.setTextColor(ContextCompat.getColor(context, R.color.accent_lime))
 
-            // 2. タップ開閉する詳細データ枠の更新（1日のアプリ累計、1日のスマホ累計、残枠、上限警告）
+            // 2. タップ開閉する詳細データ枠の更新（1日のアプリ累計、1日のスマホ累計）
             tvBalloonAppDayTotal?.text = "1日のアプリ累計: $appDayStr"
             tvBalloonPhoneDayTotal?.text = "1日のスマホ累計: $phoneDayStr"
-            val budgetText = if (savingsMinutes > 0) "1時間の残枠: ${remainingBudget}分 (+貯金${savingsMinutes}分)" else "1時間の残枠: ${remainingBudget}分"
-            tvBalloonBudgetRemaining?.text = budgetText
-
-            if (isExceeded) {
-                tvBalloonAlertWarning?.visibility = View.VISIBLE
-                tvBalloonAlertWarning?.text = "連続上限（${activeRule.maxContinuousMinutes}分）超過"
-                tvBalloonContinuousDuration?.setTextColor(ContextCompat.getColor(context, R.color.accent_crimson))
-            } else {
-                tvBalloonAlertWarning?.visibility = View.GONE
-                tvBalloonContinuousDuration?.setTextColor(ContextCompat.getColor(context, R.color.accent_lime))
-            }
 
             // 1. アプリ単体の5分ごと判定（5分, 10分, 15分...）
             val appTriggered = if (!isBuffer && !packageName.isNullOrBlank()) {
@@ -577,6 +348,7 @@ class CuraOverlayManager(private val context: Context) {
             val screenTriggered = limitManager.shouldTriggerScreenFiveMinuteReminder(screenMinutes)
 
             if (appTriggered || screenTriggered) {
+                val budgetRem = remainingBudgetMinutes ?: 0L
                 val messages = mutableListOf<String>()
                 if (appTriggered) {
                     messages.add(
@@ -584,7 +356,7 @@ class CuraOverlayManager(private val context: Context) {
                             appName = appName,
                             appMinutes = appMinutes,
                             screenMinutes = screenMinutes,
-                            remainingBudgetMinutes = remainingBudget,
+                            remainingBudgetMinutes = budgetRem,
                             todayAppSeconds = todayAppDurationSec,
                             continuousScreenSeconds = screenSecondsTotal,
                             todayTotalPhoneSeconds = todayTotalPhoneDurationSec
@@ -597,7 +369,7 @@ class CuraOverlayManager(private val context: Context) {
                             appName = appName,
                             appMinutes = appMinutes,
                             screenMinutes = screenMinutes,
-                            remainingBudgetMinutes = remainingBudget,
+                            remainingBudgetMinutes = budgetRem,
                             todayAppSeconds = todayAppDurationSec,
                             continuousScreenSeconds = screenSecondsTotal,
                             todayTotalPhoneSeconds = todayTotalPhoneDurationSec
@@ -618,7 +390,6 @@ class CuraOverlayManager(private val context: Context) {
 
     fun removeOverlay() {
         mainHandler.removeCallbacks(autoHideRunnable)
-        stopThirtySecondBlock()
         overlayView?.let {
             try {
                 windowManager.removeView(it)

@@ -17,11 +17,7 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import jp.cura.savetime.MainActivity
 import jp.cura.savetime.R
-import jp.cura.savetime.manager.CuraScheduleManager
 import jp.cura.savetime.manager.DailyGoalManager
-import jp.cura.savetime.manager.HourlyBudgetManager
-import jp.cura.savetime.manager.HourlyBudgetStatus
-import jp.cura.savetime.manager.ScheduleTemplateType
 import jp.cura.savetime.model.ThresholdAlert
 import jp.cura.savetime.overlay.CuraOverlayManager
 import jp.cura.savetime.tracker.UsageSessionTracker
@@ -92,22 +88,6 @@ class UsageMonitorService : Service() {
 
         @Volatile
         var shouldReloadMessageCatalog = false
-
-        @Volatile
-        var shouldTriggerThirtySecondBlock = false
-
-        @Volatile
-        var shouldTriggerOneHourSleepBlock = false
-
-        var scheduleManager: CuraScheduleManager? = null
-            private set
-
-        var hourlyBudgetManager: HourlyBudgetManager? = null
-            private set
-
-        @Volatile
-        var latestBudgetStatus: HourlyBudgetStatus? = null
-            private set
     }
 
     private val serviceJob = Job()
@@ -119,44 +99,12 @@ class UsageMonitorService : Service() {
     private lateinit var overlayManager: CuraOverlayManager
     private lateinit var ghostAppsStore: jp.cura.savetime.util.GhostAppsStore
 
-    @Volatile
-    private var isAlarmActive = false
-
-    @Volatile
-    private var isMorningWakeupLockPending = false
-
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val now = System.currentTimeMillis()
             when (intent?.action) {
                 Intent.ACTION_SCREEN_OFF -> tracker.onScreenOff(now)
                 Intent.ACTION_SCREEN_ON -> tracker.onScreenOn(now)
-                Intent.ACTION_USER_PRESENT -> {
-                    val currentPkg = tracker.getCurrentSession()?.packageName ?: tracker.getMostRecentOrActiveApp()?.first
-                    val shouldDefer = DailyGoalManager.shouldDeferMorningWakeupLock(isAlarmActive, currentPkg)
-                    if (shouldDefer) {
-                        if (DailyGoalManager.shouldTriggerMorningWakeupLock(this@UsageMonitorService, now)) {
-                            isMorningWakeupLockPending = true
-                        }
-                    } else {
-                        checkAndTriggerMorningWakeupLock(now)
-                    }
-                }
-                DailyGoalManager.ACTION_CURA_ALARM_STARTED -> {
-                    isAlarmActive = true
-                    if (overlayManager.isBlockerShowing) {
-                        android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            overlayManager.stopScreenBlock()
-                        }
-                    }
-                    if (DailyGoalManager.shouldTriggerMorningWakeupLock(this@UsageMonitorService, now)) {
-                        isMorningWakeupLockPending = true
-                    }
-                }
-                DailyGoalManager.ACTION_CURA_ALARM_DISMISSED -> {
-                    isAlarmActive = false
-                    triggerPendingMorningWakeupLockIfAllowed(now)
-                }
             }
         }
     }
@@ -172,15 +120,10 @@ class UsageMonitorService : Service() {
         createNotificationChannels()
         ghostAppsStore = jp.cura.savetime.util.GhostAppsStore(this)
         overlayManager = CuraOverlayManager(this)
-        scheduleManager = CuraScheduleManager(this)
-        hourlyBudgetManager = HourlyBudgetManager(this)
 
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_SCREEN_ON)
-            addAction(Intent.ACTION_USER_PRESENT)
-            addAction(DailyGoalManager.ACTION_CURA_ALARM_STARTED)
-            addAction(DailyGoalManager.ACTION_CURA_ALARM_DISMISSED)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(screenReceiver, filter, Context.RECEIVER_EXPORTED)
@@ -254,38 +197,12 @@ class UsageMonitorService : Service() {
                     shouldReloadMessageCatalog = false
                     overlayManager.reloadMessageCatalog()
                 }
-                if (shouldTriggerThirtySecondBlock) {
-                    shouldTriggerThirtySecondBlock = false
-                    mainHandlerPostBlock()
-                }
-                if (shouldTriggerOneHourSleepBlock) {
-                    shouldTriggerOneHourSleepBlock = false
-                    mainHandlerPostSleepBlock()
-                }
 
-                // Cura アラーム終了またはCura離脱時の保留中朝イチ起床ロックのフェイルセーフ発動
-                if (isMorningWakeupLockPending && !isAlarmActive && targetPkg != DailyGoalManager.CURA_ALARM_PACKAGE) {
-                    triggerPendingMorningWakeupLockIfAllowed(now)
-                }
                 val isGhost = if (session != null && !session.isBufferActive) {
                     ghostAppsStore.isGhostModeApp(session.packageName)
                 } else {
                     false
                 }
-
-                // カレンダー・予定連動テンプレートと毎時ウェイト配分・貯金の更新
-                val currentTemplate = scheduleManager?.determineTemplate(now) ?: ScheduleTemplateType.WEEKDAY_CLASS
-                val todayGoalSec = DailyGoalManager.getTodayGoalSeconds(this@UsageMonitorService)
-                val prevHourUsedSec = tracker.getPreviousHourPhoneUsageSeconds(now)
-                val currentHourUsedSec = tracker.getCurrentHourPhoneUsageSeconds(now)
-                val budgetStatus = hourlyBudgetManager?.updateHourlyBudget(
-                    nowMs = now,
-                    dailyGoalSeconds = todayGoalSec,
-                    templateType = currentTemplate,
-                    previousHourUsedSeconds = prevHourUsedSec,
-                    currentHourUsageSeconds = currentHourUsedSec
-                )
-                latestBudgetStatus = budgetStatus
 
                 overlayManager.updateState(
                     packageName = session?.packageName,
@@ -295,10 +212,7 @@ class UsageMonitorService : Service() {
                     todayAppDurationSec = todayAppSec,
                     todayTotalPhoneDurationSec = todayTotalPhoneSec,
                     isBuffer = session?.isBufferActive ?: false,
-                    isGhostMode = isGhost,
-                    remainingBudgetMinutes = budgetStatus?.remainingMinutes,
-                    savingsMinutes = budgetStatus?.savingsMinutes ?: 0L,
-                    templateName = currentTemplate.displayName
+                    isGhostMode = isGhost
                 )
 
                 delay(1000L) // 1秒間隔でUI/オーバーレイ更新
@@ -306,37 +220,6 @@ class UsageMonitorService : Service() {
         }
 
         return START_STICKY
-    }
-
-    private fun checkAndTriggerMorningWakeupLock(nowMs: Long) {
-        if (DailyGoalManager.shouldTriggerMorningWakeupLock(this, nowMs)) {
-            DailyGoalManager.recordMorningWakeupLockTriggered(this, nowMs)
-            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                overlayManager.startMorningWakeupBlock(60)
-            }
-        }
-    }
-
-    private fun triggerPendingMorningWakeupLockIfAllowed(nowMs: Long) {
-        if (isMorningWakeupLockPending || DailyGoalManager.shouldTriggerMorningWakeupLock(this, nowMs)) {
-            isMorningWakeupLockPending = false
-            DailyGoalManager.recordMorningWakeupLockTriggered(this, nowMs)
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                overlayManager.startMorningWakeupBlock(60)
-            }, 800L)
-        }
-    }
-
-    private fun mainHandlerPostBlock() {
-        android.os.Handler(android.os.Looper.getMainLooper()).post {
-            overlayManager.startThirtySecondBlock(30)
-        }
-    }
-
-    private fun mainHandlerPostSleepBlock() {
-        android.os.Handler(android.os.Looper.getMainLooper()).post {
-            overlayManager.startOneHourSleepBlock(3600)
-        }
     }
 
     private fun detectAndRegisterDefaultLauncher() {

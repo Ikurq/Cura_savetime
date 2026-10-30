@@ -30,8 +30,6 @@ import androidx.lifecycle.lifecycleScope
 import jp.cura.savetime.databinding.ActivityMainBinding
 import jp.cura.savetime.manager.CuraScheduleManager
 import jp.cura.savetime.manager.DailyGoalManager
-import jp.cura.savetime.manager.HourlyBudgetStatus
-import jp.cura.savetime.manager.ScheduleMode
 import jp.cura.savetime.model.TimelineEntry
 import jp.cura.savetime.service.UsageMonitorService
 import jp.cura.savetime.tracker.TimelineGraphCalculator
@@ -81,24 +79,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private var currentMicroAction: String = "1回だけ深呼吸する"
-    private var lastMicroActionRefreshMs: Long = 0L
-
-    private fun refreshMicroAction(force: Boolean = false) {
-        val now = System.currentTimeMillis()
-        if (force || now - lastMicroActionRefreshMs >= 30_000L) {
-            lastMicroActionRefreshMs = now
-            currentMicroAction = RelaxActionCatalog.getRandomAction(this)
-            binding.btnHeroBlock30s.text = currentMicroAction
-            binding.btnQuickBlock30s.text = "$currentMicroAction (30秒ブロック)"
-        }
-    }
-
     override fun onResume() {
         super.onResume()
         checkPermissions()
         updateUiState()
-        refreshMicroAction(force = true)
 
         val filter = IntentFilter(UsageMonitorService.ACTION_STATE_CHANGED)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -169,24 +153,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        binding.btnHeroBlock30s.setOnClickListener {
-            triggerThirtySecondBlock()
-        }
-
-        binding.btnHeroSleep1h.setOnClickListener {
-            triggerOneHourSleepBlock()
-        }
-
         binding.tvHeroCuraMessage.setOnClickListener {
             showTapSummaryInHero()
-        }
-
-        binding.btnQuickBlock30s.setOnClickListener {
-            triggerThirtySecondBlock()
-        }
-
-        binding.btnQuickSleep1h.setOnClickListener {
-            triggerOneHourSleepBlock()
         }
 
         binding.tvMicroLogHeader.setOnClickListener {
@@ -227,47 +195,6 @@ class MainActivity : AppCompatActivity() {
         binding.btnEditDialogueJson.setOnClickListener {
             showEditDialogueJsonDialog()
         }
-
-        setupScheduleTemplateButtons()
-    }
-
-    private fun setupScheduleTemplateButtons() {
-        val scheduleMgr = UsageMonitorService.scheduleManager ?: CuraScheduleManager(this)
-
-        fun refreshButtons() {
-            val mode = scheduleMgr.getScheduleMode()
-            val activeColor = ContextCompat.getColor(this, R.color.accent_cyan)
-            val inactiveColor = ContextCompat.getColor(this, R.color.bg_surface)
-            val activeTextColor = ContextCompat.getColor(this, R.color.bg_void)
-            val inactiveTextColor = ContextCompat.getColor(this, R.color.text_primary)
-
-            binding.btnTemplateModeAuto.backgroundTintList = ColorStateList.valueOf(if (mode == ScheduleMode.AUTO) activeColor else inactiveColor)
-            binding.btnTemplateModeAuto.setTextColor(if (mode == ScheduleMode.AUTO) activeTextColor else inactiveTextColor)
-
-            binding.btnTemplateModeWeekday.backgroundTintList = ColorStateList.valueOf(if (mode == ScheduleMode.FORCE_WEEKDAY) activeColor else inactiveColor)
-            binding.btnTemplateModeWeekday.setTextColor(if (mode == ScheduleMode.FORCE_WEEKDAY) activeTextColor else inactiveTextColor)
-
-            binding.btnTemplateModeHoliday.backgroundTintList = ColorStateList.valueOf(if (mode == ScheduleMode.FORCE_HOLIDAY) activeColor else inactiveColor)
-            binding.btnTemplateModeHoliday.setTextColor(if (mode == ScheduleMode.FORCE_HOLIDAY) activeTextColor else inactiveTextColor)
-
-            val currentTemplate = scheduleMgr.determineTemplate()
-            binding.tvCurrentTemplateBadge.text = "[ ${currentTemplate.displayName} ]"
-        }
-
-        binding.btnTemplateModeAuto.setOnClickListener {
-            scheduleMgr.setScheduleMode(ScheduleMode.AUTO)
-            refreshButtons()
-        }
-        binding.btnTemplateModeWeekday.setOnClickListener {
-            scheduleMgr.setScheduleMode(ScheduleMode.FORCE_WEEKDAY)
-            refreshButtons()
-        }
-        binding.btnTemplateModeHoliday.setOnClickListener {
-            scheduleMgr.setScheduleMode(ScheduleMode.FORCE_HOLIDAY)
-            refreshButtons()
-        }
-
-        refreshButtons()
     }
 
     private fun switchTab(tabIndex: Int) {
@@ -348,57 +275,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun triggerThirtySecondBlock() {
-        val canDraw = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            Settings.canDrawOverlays(this)
-        } else {
-            true
-        }
-        if (!canDraw) {
-            Toast.makeText(this, "「他のアプリの上に重ねて表示」権限を許可してください", Toast.LENGTH_SHORT).show()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                startActivity(
-                    Intent(
-                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        Uri.parse("package:$packageName")
-                    )
-                )
-            }
-            return
-        }
-        if (!UsageMonitorService.isRunning && hasUsageStatsPermission()) {
-            startMonitorService()
-        }
-        UsageMonitorService.shouldTriggerThirtySecondBlock = true
-        Toast.makeText(this, "${currentMicroAction}（30秒間ロック）を開始します", Toast.LENGTH_SHORT).show()
-        refreshMicroAction(force = true)
-    }
-
-    private fun triggerOneHourSleepBlock() {
-        val canDraw = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            Settings.canDrawOverlays(this)
-        } else {
-            true
-        }
-        if (!canDraw) {
-            Toast.makeText(this, "「他のアプリの上に重ねて表示」権限を許可してください", Toast.LENGTH_SHORT).show()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                startActivity(
-                    Intent(
-                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        Uri.parse("package:$packageName")
-                    )
-                )
-            }
-            return
-        }
-        if (!UsageMonitorService.isRunning && hasUsageStatsPermission()) {
-            startMonitorService()
-        }
-        UsageMonitorService.shouldTriggerOneHourSleepBlock = true
-        Toast.makeText(this, "「今日は眠る」モード（1時間スマホロック）を開始します", Toast.LENGTH_SHORT).show()
-    }
-
     private fun showAppActionSheet(pkg: String, appName: String) {
         val isGhost = ghostAppsStore.getGhostPackages().contains(pkg)
         val ghostActionText = if (isGhost) {
@@ -409,8 +285,7 @@ class MainActivity : AppCompatActivity() {
 
         val options = arrayOf(
             ghostActionText,
-            "監視除外リストに追加する",
-            "今すぐ30秒間画面をブロックして休む"
+            "監視除外リストに追加する"
         )
 
         AlertDialog.Builder(this)
@@ -427,7 +302,6 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                     1 -> excludePackage(pkg, appName)
-                    2 -> triggerThirtySecondBlock()
                 }
             }
             .setNegativeButton("閉じる", null)
@@ -688,12 +562,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateUiState() {
-        refreshMicroAction(force = false)
-
-        val isSleepTime = DailyGoalManager.isSleepBlockAvailable()
-        binding.btnHeroSleep1h.visibility = if (isSleepTime) View.VISIBLE else View.GONE
-        binding.btnQuickSleep1h.visibility = if (isSleepTime) View.VISIBLE else View.GONE
-
         val isRunning = UsageMonitorService.isRunning
         if (binding.switchMonitorDaemon.isChecked != isRunning) {
             binding.switchMonitorDaemon.isChecked = isRunning
@@ -723,36 +591,6 @@ class MainActivity : AppCompatActivity() {
         val todayAppSec = UsageMonitorService.tracker.getTodayAppUsageSeconds(targetPkg)
         val todayTotalSec = UsageMonitorService.tracker.getTodayTotalPhoneUsageSeconds()
         binding.tvTodayTotalTimer.text = formatHms(todayTotalSec)
-
-        // Hourly budget progress (動的ウェイト配分および貯金プール連動)
-        val budgetStatus = UsageMonitorService.latestBudgetStatus
-        val availableSec = budgetStatus?.totalAvailableBudgetSeconds ?: 1800L
-        val budgetUsedSec = budgetStatus?.usedSeconds ?: maxOf(screenSec, (session?.continuousDurationMs ?: 0L) / 1000L)
-        val budgetPct = if (availableSec > 0L) {
-            ((budgetUsedSec * 100L) / availableSec).toInt().coerceIn(0, 100)
-        } else {
-            if (budgetUsedSec > 0L) 100 else 0
-        }
-        binding.progressHourlyGoal.progress = budgetPct
-
-        if (budgetStatus != null) {
-            val totalAvailMins = budgetStatus.totalAvailableMinutes
-            binding.tvHourlyGoalTitle.text = "1時間予算 [${budgetStatus.templateType.displayName}: ${totalAvailMins}分枠]"
-        } else {
-            binding.tvHourlyGoalTitle.text = "1時間予算 (目標 30分以内)"
-        }
-
-        val savingsStr = if ((budgetStatus?.carriedSavingsSeconds ?: 0L) > 0L) " (貯金+${budgetStatus!!.savingsMinutes}分)" else ""
-        binding.tvGoalProgressLabel.text = "${budgetPct}% 使用済み${savingsStr}"
-
-        val progressColorRes = when {
-            budgetPct >= 85 -> R.color.accent_crimson
-            budgetPct >= 60 -> R.color.accent_amber
-            else -> R.color.accent_lime
-        }
-        val progressColor = ContextCompat.getColor(this, progressColorRes)
-        binding.tvGoalProgressLabel.setTextColor(progressColor)
-        binding.progressHourlyGoal.progressTintList = ColorStateList.valueOf(progressColor)
 
         if (session != null && !session.isBufferActive) {
             binding.tvActiveAppName.text = "${session.appName} (1日累計)"
