@@ -10,31 +10,59 @@
     android:orientation="vertical"
     tools:context=".MainActivity">
 
-    <!-- 1. Fixed Status Header -->
+    <!-- 1. Fixed Status Header (CareYou Style HUD) -->
     <LinearLayout
+        android:id="@+id/topSystemBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/bg_panel"
+        android:background="#88000000"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingHorizontal="16dp"
-        android:paddingVertical="12dp">
+        android:paddingTop="12dp"
+        android:paddingBottom="12dp">
 
-        <TextView
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:fontFamily="monospace"
-            android:text="CURA_OS // TIME_DEFENSE_MONITOR"
-            android:textColor="@color/accent_cyan"
-            android:textSize="11.5sp"
-            android:textStyle="bold" />
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/welcomeTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:letterSpacing="0.1"
+                android:text="CURA_SYSTEM: ACTIVE"
+                android:textColor="@color/accent_cyan"
+                android:textSize="12sp"
+                android:textStyle="bold|italic" />
+
+            <TextView
+                android:id="@+id/hudFlavorText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:alpha="0.8"
+                android:ellipsize="marquee"
+                android:fontFamily="monospace"
+                android:letterSpacing="0.15"
+                android:marqueeRepeatLimit="marquee_forever"
+                android:scrollHorizontally="true"
+                android:singleLine="true"
+                android:text="OBSERVATION MODE / ACTIVE"
+                android:textAllCaps="true"
+                android:textColor="@color/white"
+                android:textSize="15sp"
+                android:textStyle="bold|italic" />
+        </LinearLayout>
 
         <Button
             android:id="@+id/btnCheckUpdate"
             android:layout_width="wrap_content"
             android:layout_height="28dp"
-            android:layout_marginEnd="8dp"
+            android:layout_marginEnd="6dp"
             android:backgroundTint="@color/bg_surface"
             android:fontFamily="monospace"
             android:insetTop="0dp"
@@ -46,18 +74,16 @@
             android:textColor="@color/text_secondary"
             android:textSize="9.5sp" />
 
-        <TextView
-            android:id="@+id/tvStatusBadge"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="@color/bg_surface"
-            android:fontFamily="monospace"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="4dp"
-            android:text="● ACTIVE"
-            android:textColor="@color/accent_lime"
-            android:textSize="10.5sp"
-            android:textStyle="bold" />
+        <ImageButton
+            android:id="@+id/btnQuickSettings"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="設定"
+            android:padding="8dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_tech_settings"
+            app:tint="@color/accent_cyan" />
     </LinearLayout>
 
     <View

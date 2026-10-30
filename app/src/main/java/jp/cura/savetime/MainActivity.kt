@@ -69,6 +69,7 @@ class MainActivity : AppCompatActivity() {
         UsageMonitorService.refreshIgnoredPackages(this)
         binding.switchAutoGameGhost.isChecked = ghostAppsStore.isAutoDetectGameCategoryEnabled()
         setupListeners()
+        binding.hudFlavorText.isSelected = true
         binding.bottomNavigation.selectedItemId = R.id.nav_home
         requestNotificationPermissionIfNeeded()
 
@@ -223,6 +224,10 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnEditDialogueJson.setOnClickListener {
             showEditDialogueJsonDialog()
+        }
+
+        binding.btnQuickSettings.setOnClickListener {
+            binding.bottomNavigation.selectedItemId = R.id.nav_settings
         }
     }
 
@@ -657,11 +662,13 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (isRunning) {
-            binding.tvStatusBadge.text = "● ACTIVE"
-            binding.tvStatusBadge.setTextColor(ContextCompat.getColor(this, R.color.accent_lime))
+            binding.welcomeTitle.text = "CURA_SYSTEM: ACTIVE"
+            binding.welcomeTitle.setTextColor(ContextCompat.getColor(this, R.color.accent_cyan))
+            binding.hudFlavorText.text = "OBSERVATION MODE / ACTIVE"
         } else {
-            binding.tvStatusBadge.text = "○ STANDBY"
-            binding.tvStatusBadge.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
+            binding.welcomeTitle.text = "CURA_SYSTEM: STANDBY"
+            binding.welcomeTitle.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
+            binding.hudFlavorText.text = "OBSERVATION MODE / STANDBY"
         }
 
         // First feed timeline data to graph so app summaries are up to date
