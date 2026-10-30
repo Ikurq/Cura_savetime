@@ -642,13 +642,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startMonitorService() {
+        UsageMonitorService.isRunning = true
+        pendingServiceState = true
         val intent = Intent(this, UsageMonitorService::class.java)
         ContextCompat.startForegroundService(this, intent)
+        updateUiState()
     }
 
     private fun stopMonitorService() {
-        val intent = Intent(this, UsageMonitorService::class.java)
-        stopService(intent)
+        UsageMonitorService.isRunning = false
+        pendingServiceState = false
+        val stopIntent = Intent(this, UsageMonitorService::class.java).apply {
+            action = UsageMonitorService.ACTION_STOP_SERVICE
+        }
+        startService(stopIntent)
+        stopService(stopIntent)
         updateUiState()
     }
 

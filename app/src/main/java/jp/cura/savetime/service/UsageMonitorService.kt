@@ -39,6 +39,7 @@ class UsageMonitorService : Service() {
         const val CHANNEL_ALERT = "savetime_alert_channel"
         const val NOTIFICATION_ID_MONITOR = 1001
         const val ACTION_STATE_CHANGED = "jp.cura.savetime.ACTION_STATE_CHANGED"
+        const val ACTION_STOP_SERVICE = "jp.cura.savetime.ACTION_STOP_SERVICE"
 
         // 動的に追加される無視対象パッケージ（ランチャー等）
         val dynamicIgnoredPackages = mutableSetOf(
@@ -62,7 +63,7 @@ class UsageMonitorService : Service() {
         )
 
         var isRunning = false
-            private set
+            internal set
 
         @Volatile
         private var lastAccessibilityEventTime: Long = 0L
@@ -174,6 +175,11 @@ class UsageMonitorService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP_SERVICE) {
+            stopServiceInternal()
+            return START_NOT_STICKY
+        }
+
         isRunning = true
         broadcastState()
         startForeground(NOTIFICATION_ID_MONITOR, buildMonitorNotification("監視待機中...", 0L))
@@ -514,14 +520,32 @@ class UsageMonitorService : Service() {
         }
     }
 
-    override fun onDestroy() {
+    private fun stopServiceInternal() {
         isRunning = false
-        broadcastState()
+        monitorLoopJob?.cancel()
         serviceJob.cancel()
-        overlayManager.removeOverlay()
+        if (::overlayManager.isInitialized) {
+            overlayManager.removeOverlay()
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+        if (::notificationManager.isInitialized) {
+            notificationManager.cancel(NOTIFICATION_ID_MONITOR)
+            notificationManager.cancel(1002)
+        }
         try {
             unregisterReceiver(screenReceiver)
         } catch (_: Exception) {}
+        broadcastState()
+        stopSelf()
+    }
+
+    override fun onDestroy() {
+        stopServiceInternal()
         super.onDestroy()
     }
 
