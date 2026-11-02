@@ -29,6 +29,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import jp.cura.savetime.databinding.ActivityMainBinding
 import jp.cura.savetime.manager.DailyGoalManager
+import jp.cura.savetime.manager.ScreenLockManager
 import jp.cura.savetime.model.TimelineEntry
 import jp.cura.savetime.service.UsageMonitorService
 import jp.cura.savetime.tracker.TimelineGraphCalculator
@@ -50,6 +51,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var excludedAppsStore: ExcludedAppsStore
     private lateinit var ghostAppsStore: GhostAppsStore
+    private lateinit var screenLockManager: ScreenLockManager
     private var currentTabIndex: Int = 0
     private var isMicroLogExpanded: Boolean = false
     private var isUpdatingSwitchUi: Boolean = false
@@ -68,8 +70,11 @@ class MainActivity : AppCompatActivity() {
 
         excludedAppsStore = ExcludedAppsStore(this)
         ghostAppsStore = GhostAppsStore(this)
+        screenLockManager = ScreenLockManager.fromContext(this)
         UsageMonitorService.refreshIgnoredPackages(this)
         binding.switchAutoGameGhost.isChecked = ghostAppsStore.isAutoDetectGameCategoryEnabled()
+        binding.switchIntervalLock.isChecked = screenLockManager.isIntervalLockEnabled
+        binding.switchNightLock.isChecked = screenLockManager.isNightLockEnabled
         setupListeners()
         binding.hudFlavorText.isSelected = true
         binding.bottomNavigation.selectedItemId = R.id.nav_home
@@ -222,6 +227,18 @@ class MainActivity : AppCompatActivity() {
 
         binding.switchAutoGameGhost.setOnCheckedChangeListener { _, isChecked ->
             ghostAppsStore.setAutoDetectGameCategoryEnabled(isChecked)
+        }
+
+        binding.switchIntervalLock.setOnCheckedChangeListener { _, isChecked ->
+            screenLockManager.isIntervalLockEnabled = isChecked
+            screenLockManager.saveSettings(this)
+            UsageMonitorService.shouldReloadScreenLockSettings = true
+        }
+
+        binding.switchNightLock.setOnCheckedChangeListener { _, isChecked ->
+            screenLockManager.isNightLockEnabled = isChecked
+            screenLockManager.saveSettings(this)
+            UsageMonitorService.shouldReloadScreenLockSettings = true
         }
 
         binding.btnAddGhostApp.setOnClickListener {

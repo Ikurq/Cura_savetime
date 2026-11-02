@@ -14,6 +14,17 @@
     <string name="accessibility_required_desc">アプリの起動・切り替えを即座に認識するため、「ユーザー補助」をONにしてください。</string>
     <string name="grant_accessibility">ユーザー補助を設定する</string>
 
+    <!-- 画面ロック関連 -->
+    <string name="screen_lock_section_title">:: SCREEN_LOCK_SETTINGS</string>
+    <string name="screen_lock_interval_title">連続利用の自動休憩ロック</string>
+    <string name="screen_lock_interval_desc">長時間の連続利用時に自動で画面ロックを発動し、休憩を促します。</string>
+    <string name="screen_lock_night_title">深夜帯の就寝自動ロック</string>
+    <string name="screen_lock_night_desc">23:00〜06:00に連続20分使用した場合、自動で就寝ロックを発動します。</string>
+    <string name="screen_lock_emergency_hint">※ 画面ロック中は、画面下のボタンを5秒長押しすることで緊急解除できます。</string>
+    <string name="screen_lock_emergency_button">5秒長押しで緊急解除</string>
+    <string name="screen_lock_emergency_progress">長押し中… (%d%%)</string>
+    <string name="screen_lock_countdown_format">残り %02d:%02d</string>
+
     <!-- 心理的ハードルを下げるマイクロアクション文言リスト -->
     <string-array name="micro_action_button_labels">
         <item>1回だけ深呼吸する</item>

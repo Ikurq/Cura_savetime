@@ -26,6 +26,7 @@ import androidx.core.content.ContextCompat
 import jp.cura.savetime.R
 import jp.cura.savetime.limiter.FlexibleUsageLimitManager
 import jp.cura.savetime.manager.DailyGoalManager
+import jp.cura.savetime.manager.ScreenLockManager
 import jp.cura.savetime.tracker.TimelineGraphCalculator
 import jp.cura.savetime.util.CuraMessageCatalog
 import java.util.Locale
@@ -69,17 +70,61 @@ class CuraOverlayManager(private val context: Context) {
     private var blockerView: View? = null
     private var blockerRemainingSec: Int = 0
     private var blockerEndTimeMs: Long = 0L
+    private var tvBlockerCountdown: TextView? = null
+    private var tvBlockerBreathe: TextView? = null
+    private var btnBlockerEmergency: Button? = null
+    private var emergencyPressStartTime: Long = 0L
+    private var isEmergencyPressing: Boolean = false
+
+    var onEmergencyUnlockListener: (() -> Unit)? = null
+
+    private val emergencyProgressRunnable = object : Runnable {
+        override fun run() {
+            if (!isEmergencyPressing) return
+            val elapsed = System.currentTimeMillis() - emergencyPressStartTime
+            val progressPercent = ((elapsed.toFloat() / 5000f) * 100f).coerceIn(0f, 100f).toInt()
+            if (elapsed >= 5000L) {
+                isEmergencyPressing = false
+                ScreenLockManager.fromContext(context).recordEmergencyUnlock(System.currentTimeMillis(), context)
+                onEmergencyUnlockListener?.invoke()
+                stopScreenBlock()
+            } else {
+                btnBlockerEmergency?.text = String.format(Locale.getDefault(), "長押し中… (%d%%)", progressPercent)
+                mainHandler.postDelayed(this, 100L)
+            }
+        }
+    }
+
     private val blockerTickRunnable = object : Runnable {
         override fun run() {
             val now = System.currentTimeMillis()
             val remSec = ((blockerEndTimeMs - now) / 1000L).coerceAtLeast(0L).toInt()
             blockerRemainingSec = remSec
             if (remSec <= 0) {
-                stopThirtySecondBlock()
+                stopScreenBlock()
             } else {
+                updateBlockerCountdownText(remSec)
+                updateBlockerBreatheText(now)
                 mainHandler.postDelayed(this, 1000L)
             }
         }
+    }
+
+    private fun updateBlockerCountdownText(remSec: Int) {
+        val minutes = remSec / 60
+        val seconds = remSec % 60
+        tvBlockerCountdown?.text = String.format(Locale.getDefault(), "残り %02d:%02d", minutes, seconds)
+    }
+
+    private fun updateBlockerBreatheText(nowMs: Long) {
+        val cycleSec = ((nowMs / 1000L) % 16L).toInt()
+        val breatheText = when {
+            cycleSec < 4 -> "ゆっくり息を吸って…"
+            cycleSec < 8 -> "息を止めて…"
+            cycleSec < 14 -> "細く長く息を吐いて…"
+            else -> "肩の力を抜いてリラックス…"
+        }
+        tvBlockerBreathe?.text = breatheText
     }
 
     private var isBalloonVisible = false
@@ -320,6 +365,29 @@ class CuraOverlayManager(private val context: Context) {
     }
 
     /**
+     * 連続利用制限到達時の強制休憩ロック（デフォルト2分間）
+     */
+    fun startIntervalBreakBlock(durationSeconds: Int = 120) {
+        val action = jp.cura.savetime.util.RelaxActionCatalog.getRandomAction(context)
+        startScreenBlock(
+            durationSeconds = durationSeconds,
+            tagText = ":: CURA // INTERVAL_BREAK_LOCK",
+            messageText = "マスター、長時間お疲れ様です！\n連続利用制限に達したため、休憩ロックを発動しました。\n${action}して、目を休めましょう。"
+        )
+    }
+
+    /**
+     * 深夜帯（23:00〜06:00）における自動就寝ロック（デフォルト3分間）
+     */
+    fun startNightDefenseBlock(durationSeconds: Int = 180) {
+        startScreenBlock(
+            durationSeconds = durationSeconds,
+            tagText = ":: CURA // NIGHT_DEFENSE_LOCK",
+            messageText = "マスター、夜更かしは禁物ですっ！\n深夜帯の就寝自動ロックを発動しました。\n画面を伏せて、しっかり目を休めましょうね。"
+        )
+    }
+
+    /**
      * 指定秒数フルスクリーンで画面全体を覆い、あらゆるタッチ・戻る操作をブロックする
      */
     @SuppressLint("ClickableViewAccessibility")
@@ -334,11 +402,14 @@ class CuraOverlayManager(private val context: Context) {
         if (blockerView != null) {
             blockerEndTimeMs = System.currentTimeMillis() + durationSeconds * 1000L
             blockerRemainingSec = durationSeconds
+            ScreenLockManager.saveActiveLockEndTime(context, blockerEndTimeMs)
+            updateBlockerCountdownText(durationSeconds)
             return
         }
 
         blockerEndTimeMs = System.currentTimeMillis() + durationSeconds * 1000L
         blockerRemainingSec = durationSeconds
+        ScreenLockManager.saveActiveLockEndTime(context, blockerEndTimeMs)
         val density = context.resources.displayMetrics.density
 
         val container = object : LinearLayout(context) {
@@ -366,44 +437,116 @@ class CuraOverlayManager(private val context: Context) {
             gravity = Gravity.CENTER
         }
 
+        val countdownTv = TextView(context).apply {
+            val minutes = durationSeconds / 60
+            val seconds = durationSeconds % 60
+            text = String.format(Locale.getDefault(), "残り %02d:%02d", minutes, seconds)
+            setTextColor(ContextCompat.getColor(context, R.color.accent_cyan))
+            textSize = 32f
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = (16 * density).toInt()
+                bottomMargin = (8 * density).toInt()
+            }
+        }
+        tvBlockerCountdown = countdownTv
+
         val charImage = ImageView(context).apply {
             setImageResource(R.drawable.cura_peeking_chibi)
             adjustViewBounds = true
             layoutParams = LinearLayout.LayoutParams(
-                (150 * density).toInt(),
-                (150 * density).toInt()
+                (140 * density).toInt(),
+                (140 * density).toInt()
             ).apply {
-                topMargin = (20 * density).toInt()
-                bottomMargin = (16 * density).toInt()
+                topMargin = (8 * density).toInt()
+                bottomMargin = (12 * density).toInt()
             }
         }
 
         val messageTv = TextView(context).apply {
             text = messageText
             setTextColor(ContextCompat.getColor(context, R.color.text_primary))
-            textSize = 16f
+            textSize = 15f
             gravity = Gravity.CENTER
-            setLineSpacing(6f * density, 1f)
+            setLineSpacing(5f * density, 1f)
         }
+
+        val breatheTv = TextView(context).apply {
+            text = "ゆっくり息を吸って…"
+            setTextColor(ContextCompat.getColor(context, R.color.accent_cyan))
+            textSize = 13f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = (18 * density).toInt()
+                bottomMargin = (6 * density).toInt()
+            }
+        }
+        tvBlockerBreathe = breatheTv
 
         val noteTv = TextView(context).apply {
             text = "[ 時間が来たら自動で解除されます。ゆっくりお過ごしください ]"
             setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
-            textSize = 12f
+            textSize = 11f
             typeface = Typeface.MONOSPACE
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                topMargin = (28 * density).toInt()
+                topMargin = (16 * density).toInt()
+                bottomMargin = (24 * density).toInt()
             }
         }
 
+        val emergencyBtn = Button(context).apply {
+            text = "5秒長押しで緊急解除"
+            setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
+            setBackgroundColor(Color.parseColor("#20FFFFFF"))
+            textSize = 11f
+            typeface = Typeface.MONOSPACE
+            setPadding((16 * density).toInt(), (8 * density).toInt(), (16 * density).toInt(), (8 * density).toInt())
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = (8 * density).toInt()
+            }
+
+            setOnTouchListener { _, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        emergencyPressStartTime = System.currentTimeMillis()
+                        isEmergencyPressing = true
+                        mainHandler.post(emergencyProgressRunnable)
+                        true
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        isEmergencyPressing = false
+                        mainHandler.removeCallbacks(emergencyProgressRunnable)
+                        text = "5秒長押しで緊急解除"
+                        true
+                    }
+                    else -> false
+                }
+            }
+        }
+        btnBlockerEmergency = emergencyBtn
+
         container.addView(tagTv)
+        container.addView(countdownTv)
         container.addView(charImage)
         container.addView(messageTv)
+        container.addView(breatheTv)
         container.addView(noteTv)
+        container.addView(emergencyBtn)
 
         val blockerParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -431,6 +574,7 @@ class CuraOverlayManager(private val context: Context) {
             mainHandler.postDelayed(blockerTickRunnable, 1000L)
         } catch (_: Exception) {
             blockerView = null
+            ScreenLockManager.clearActiveLockEndTime(context)
         }
     }
 
@@ -439,12 +583,18 @@ class CuraOverlayManager(private val context: Context) {
 
     fun stopScreenBlock() {
         mainHandler.removeCallbacks(blockerTickRunnable)
+        mainHandler.removeCallbacks(emergencyProgressRunnable)
+        isEmergencyPressing = false
+        ScreenLockManager.clearActiveLockEndTime(context)
         blockerView?.let {
             try {
                 windowManager.removeView(it)
             } catch (_: Exception) {}
         }
         blockerView = null
+        tvBlockerCountdown = null
+        tvBlockerBreathe = null
+        btnBlockerEmergency = null
         blockerRemainingSec = 0
     }
 

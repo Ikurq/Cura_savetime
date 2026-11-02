@@ -18,6 +18,7 @@ import androidx.core.app.NotificationCompat
 import jp.cura.savetime.MainActivity
 import jp.cura.savetime.R
 import jp.cura.savetime.manager.DailyGoalManager
+import jp.cura.savetime.manager.ScreenLockManager
 import jp.cura.savetime.model.ThresholdAlert
 import jp.cura.savetime.overlay.CuraOverlayManager
 import jp.cura.savetime.tracker.UsageSessionTracker
@@ -95,6 +96,9 @@ class UsageMonitorService : Service() {
 
         @Volatile
         var shouldTriggerOneHourSleepBlock = false
+
+        @Volatile
+        var shouldReloadScreenLockSettings = false
     }
 
     private val serviceJob = Job()
@@ -105,6 +109,7 @@ class UsageMonitorService : Service() {
     private lateinit var packageManagerHelper: PackageManager
     private lateinit var overlayManager: CuraOverlayManager
     private lateinit var ghostAppsStore: jp.cura.savetime.util.GhostAppsStore
+    private lateinit var screenLockManager: ScreenLockManager
 
     @Volatile
     private var isAlarmActive = false
@@ -117,8 +122,12 @@ class UsageMonitorService : Service() {
             val now = System.currentTimeMillis()
             when (intent?.action) {
                 Intent.ACTION_SCREEN_OFF -> tracker.onScreenOff(now)
-                Intent.ACTION_SCREEN_ON -> tracker.onScreenOn(now)
+                Intent.ACTION_SCREEN_ON -> {
+                    tracker.onScreenOn(now)
+                    resumeScreenBlockIfNeeded(now)
+                }
                 Intent.ACTION_USER_PRESENT -> {
+                    resumeScreenBlockIfNeeded(now)
                     val currentPkg = tracker.getCurrentSession()?.packageName ?: tracker.getMostRecentOrActiveApp()?.first
                     val shouldDefer = DailyGoalManager.shouldDeferMorningWakeupLock(isAlarmActive, currentPkg)
                     if (shouldDefer) {
@@ -159,6 +168,18 @@ class UsageMonitorService : Service() {
         createNotificationChannels()
         ghostAppsStore = jp.cura.savetime.util.GhostAppsStore(this)
         overlayManager = CuraOverlayManager(this)
+        screenLockManager = ScreenLockManager.fromContext(this)
+
+        overlayManager.onEmergencyUnlockListener = {
+            screenLockManager.recordEmergencyUnlock(System.currentTimeMillis(), this)
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                android.widget.Toast.makeText(
+                    this,
+                    "緊急解除しました。15分間画面ロックを一時停止します",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
+        }
 
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)
@@ -245,6 +266,10 @@ class UsageMonitorService : Service() {
                     shouldReloadMessageCatalog = false
                     overlayManager.reloadMessageCatalog()
                 }
+                if (shouldReloadScreenLockSettings) {
+                    shouldReloadScreenLockSettings = false
+                    screenLockManager = ScreenLockManager.fromContext(this@UsageMonitorService)
+                }
                 if (shouldTriggerThirtySecondBlock) {
                     shouldTriggerThirtySecondBlock = false
                     mainHandlerPostBlock()
@@ -252,6 +277,23 @@ class UsageMonitorService : Service() {
                 if (shouldTriggerOneHourSleepBlock) {
                     shouldTriggerOneHourSleepBlock = false
                     mainHandlerPostSleepBlock()
+                }
+
+                // 自動休憩ロック & 深夜就寝自動ロックの自律判定
+                val screenContinuousMins = totalScreenMs / 60_000L
+                val inCall = isInCall()
+                if (!overlayManager.isBlockerShowing && !isAlarmActive && !inCall) {
+                    if (screenLockManager.shouldTriggerNightLock(screenContinuousMins, nowMs = now, isInCall = inCall, isAlarmActive = isAlarmActive)) {
+                        screenLockManager.recordLockTriggered(now, this@UsageMonitorService)
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            overlayManager.startNightDefenseBlock(screenLockManager.nightDurationSeconds)
+                        }
+                    } else if (screenLockManager.shouldTriggerIntervalLock(screenContinuousMins, nowMs = now, isInCall = inCall, isAlarmActive = isAlarmActive)) {
+                        screenLockManager.recordLockTriggered(now, this@UsageMonitorService)
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            overlayManager.startIntervalBreakBlock(screenLockManager.intervalDurationSeconds)
+                        }
+                    }
                 }
 
                 // Cura アラーム終了またはCura離脱時の保留中朝イチ起床ロックのフェイルセーフ発動
@@ -310,6 +352,28 @@ class UsageMonitorService : Service() {
     private fun mainHandlerPostSleepBlock() {
         android.os.Handler(android.os.Looper.getMainLooper()).post {
             overlayManager.startOneHourSleepBlock(3600)
+        }
+    }
+
+    private fun isInCall(): Boolean {
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager ?: return false
+        return audioManager.mode == android.media.AudioManager.MODE_IN_CALL ||
+                audioManager.mode == android.media.AudioManager.MODE_IN_COMMUNICATION
+    }
+
+    private fun resumeScreenBlockIfNeeded(nowMs: Long) {
+        val activeEndTime = ScreenLockManager.getActiveLockEndTime(this)
+        if (activeEndTime > nowMs && !overlayManager.isBlockerShowing && !isAlarmActive && !isInCall()) {
+            val remainingSec = ((activeEndTime - nowMs) / 1000L).coerceAtLeast(0L).toInt()
+            if (remainingSec > 0) {
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    overlayManager.startScreenBlock(
+                        durationSeconds = remainingSec,
+                        tagText = ":: CURA // RESUMED_LOCK",
+                        messageText = "画面ロックの残り時間があります。\n画面を伏せて少しだけ体を休めましょうね。"
+                    )
+                }
+            }
         }
     }
 
