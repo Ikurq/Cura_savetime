@@ -78,15 +78,26 @@ jobs:
           path: keystore.jks
           retention-days: 2
 
+      - name: Extract App Version
+        id: get_version
+        run: |
+          VERSION=$(grep 'versionName = ' app/build.gradle.kts | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Extracted App Version: $VERSION"
+
       - name: Create or Update GitHub Release
         if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.6.0
-          name: "Cura:WatchYou v2.6.0"
+          tag_name: v${{ env.APP_VERSION }}
+          name: "Cura:WatchYou v${{ env.APP_VERSION }}"
           body: |
-            ### Changed
-            - アプリ名称を「Cura:WatchYou」に更新
-            - 1時間予算・時間帯別配分・貯金繰り越しシステムを撤廃し、連続使用見守り・画面休憩ロック機能に集中
+            ### Added
+            - 連続使用時間に応じた自動強制休憩画面ロック機能（45分で2分間ロック）
+            - 深夜帯（23:00〜06:00）における自動就寝画面ロック機能（20分で3分間ロック）
+            - 画面ロック中のリアルタイムカウントダウン表示および深呼吸ガイダンス
+            - 5秒長押しによる安全な緊急解除機構（解除後15分間クールダウン）
+            - 端末画面OFF/ONバイパス耐性（残り時間の自動復元）
+            - 設定画面での画面ロック機能トグル設定
           fail_on_unmatched_files: true
           files: app/build/outputs/apk/debug/*.apk
