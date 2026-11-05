@@ -16,6 +16,7 @@ class AppLimitManager(
     companion object {
         const val PREFS_NAME = "cura_app_limits_prefs"
         const val KEY_APP_LIMITS_JSON = "key_app_limits_json"
+        const val KEY_BLOCKED_UNTIL_JSON = "key_blocked_until_json"
         const val DEFAULT_COOLDOWN_MINUTES = 5L // ロック発動後の再発動防止クールダウン（5分間）
 
         private val json = Json { ignoreUnknownKeys = true }
@@ -31,6 +32,7 @@ class AppLimitManager(
     private val limitsMap = mutableMapOf<String, AppLimitConfig>()
     private val lastTriggerMsMap = mutableMapOf<String, Long>()
     private val lastEmergencyUnlockMsMap = mutableMapOf<String, Long>()
+    private val blockedUntilMsMap = mutableMapOf<String, Long>()
 
     fun loadFromPrefs() {
         if (prefs == null) return
@@ -44,6 +46,15 @@ class AppLimitManager(
         } catch (_: Exception) {
             // パース失敗時は現状を維持
         }
+
+        val rawBlockedJson = prefs.getString(KEY_BLOCKED_UNTIL_JSON, null)
+        if (rawBlockedJson != null) {
+            try {
+                val blockedMap = json.decodeFromString<Map<String, Long>>(rawBlockedJson)
+                blockedUntilMsMap.clear()
+                blockedUntilMsMap.putAll(blockedMap)
+            } catch (_: Exception) {}
+        }
     }
 
     private fun saveToPrefs() {
@@ -55,6 +66,37 @@ class AppLimitManager(
         } catch (_: Exception) {
             // シリアライズ失敗時は無視
         }
+    }
+
+    private fun saveBlockedUntilToPrefs() {
+        if (prefs == null) return
+        try {
+            val serialized = json.encodeToString(blockedUntilMsMap)
+            prefs.edit().putString(KEY_BLOCKED_UNTIL_JSON, serialized).apply()
+        } catch (_: Exception) {}
+    }
+
+    fun isAppBlocked(packageName: String, nowMs: Long = System.currentTimeMillis()): Boolean {
+        val until = blockedUntilMsMap[packageName] ?: return false
+        return nowMs < until
+    }
+
+    fun getBlockRemainingSeconds(packageName: String, nowMs: Long = System.currentTimeMillis()): Int {
+        val until = blockedUntilMsMap[packageName] ?: return 0
+        val remainingMs = until - nowMs
+        return if (remainingMs > 0) ((remainingMs + 999L) / 1000L).toInt() else 0
+    }
+
+    fun startAppBlock(packageName: String, durationSeconds: Int, nowMs: Long = System.currentTimeMillis()) {
+        val untilMs = nowMs + durationSeconds * 1000L
+        blockedUntilMsMap[packageName] = untilMs
+        lastTriggerMsMap[packageName] = nowMs
+        saveBlockedUntilToPrefs()
+    }
+
+    fun clearAppBlock(packageName: String) {
+        blockedUntilMsMap.remove(packageName)
+        saveBlockedUntilToPrefs()
     }
 
     fun getLimit(packageName: String): AppLimitConfig? {
@@ -74,6 +116,7 @@ class AppLimitManager(
         limitsMap.remove(packageName)
         lastTriggerMsMap.remove(packageName)
         lastEmergencyUnlockMsMap.remove(packageName)
+        clearAppBlock(packageName)
         saveToPrefs()
     }
 
@@ -103,6 +146,7 @@ class AppLimitManager(
         val config = limitsMap[packageName] ?: return null
         if (!config.isEnabled) return null
         if (isInCall || isAlarmActive) return null
+        if (isAppBlocked(packageName, nowMs)) return null
 
         val limitMs = config.limitMinutes * 60_000L
         if (continuousDurationMs < limitMs) return null
@@ -129,6 +173,7 @@ class AppLimitManager(
      */
     fun recordAppEmergencyUnlock(packageName: String, nowMs: Long = System.currentTimeMillis()) {
         lastEmergencyUnlockMsMap[packageName] = nowMs
+        clearAppBlock(packageName)
     }
 
     /**
@@ -137,5 +182,6 @@ class AppLimitManager(
     fun resetAppSessionCooldown(packageName: String) {
         lastTriggerMsMap.remove(packageName)
         lastEmergencyUnlockMsMap.remove(packageName)
+        clearAppBlock(packageName)
     }
 }

@@ -64,6 +64,8 @@ class UsageMonitorService : Service() {
         )
 
         var isRunning = false
+        @Volatile
+        var activeInstance: UsageMonitorService? = null
             internal set
 
         @Volatile
@@ -79,6 +81,7 @@ class UsageMonitorService : Service() {
                 tracker.ignoredPackages = dynamicIgnoredPackages
             }
             tracker.onAppForeground(packageName, appName, timestampMs)
+            activeInstance?.onAppSwitchedImmediate(packageName, appName, timestampMs)
         }
 
         fun refreshIgnoredPackages(context: Context) {
@@ -174,6 +177,7 @@ class UsageMonitorService : Service() {
         overlayManager = CuraOverlayManager(this)
         screenLockManager = ScreenLockManager.fromContext(this)
         appLimitManager = jp.cura.savetime.manager.AppLimitManager.fromContext(this)
+        activeInstance = this
 
         overlayManager.onEmergencyUnlockListener = {
             val nowMs = System.currentTimeMillis()
@@ -198,6 +202,20 @@ class UsageMonitorService : Service() {
             }
         }
 
+        overlayManager.onAppEmergencyUnlockListener = { pkg ->
+            val nowMs = System.currentTimeMillis()
+            appLimitManager.recordAppEmergencyUnlock(pkg, nowMs)
+            tracker.resetAppContinuousSession(pkg, nowMs)
+            val appName = appLimitManager.getLimit(pkg)?.appName ?: pkg
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                android.widget.Toast.makeText(
+                    this,
+                    "${appName}のブロックを緊急解除しました（5分間クールダウン）",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_SCREEN_ON)
@@ -214,7 +232,10 @@ class UsageMonitorService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP_SERVICE) {
-            stopServiceInternal()
+            if (activeInstance == this) {
+            activeInstance = null
+        }
+        stopServiceInternal()
             return START_NOT_STICKY
         }
 
@@ -272,7 +293,7 @@ class UsageMonitorService : Service() {
                 broadcastState()
 
                 val session = tracker.getCurrentSession()
-                if (overlayManager.isBlockerShowing && session != null) {
+                if ((overlayManager.isBlockerShowing || overlayManager.isAppExclusiveBlockShowing) && session != null) {
                     tracker.resetAppContinuousSession(session.packageName, now)
                 }
                 val recentOrActive = tracker.getMostRecentOrActiveApp()
@@ -306,27 +327,57 @@ class UsageMonitorService : Service() {
                 // 自動休憩ロック & 深夜就寝自動ロックの自律判定
                 val screenContinuousMins = totalScreenMs / 60_000L
                 val inCall = isInCall()
-                // アプリ個別利用制限ロックの自律判定
-                if (!overlayManager.isBlockerShowing && !isAlarmActive && !inCall && session != null) {
-                    val appLimit = appLimitManager.shouldTriggerAppLimitLock(
-                        packageName = session.packageName,
-                        continuousDurationMs = session.continuousDurationMs,
-                        nowMs = now,
-                        isInCall = inCall,
-                        isAlarmActive = isAlarmActive
-                    )
-                    if (appLimit != null) {
-                        appLimitManager.recordAppLockTriggered(appLimit.packageName, now)
-                        tracker.resetAppContinuousSession(appLimit.packageName, now)
-                        val appName = appLimit.appName
-                        val limitMinutes = appLimit.limitMinutes
-                        val blockSeconds = appLimit.blockDurationSeconds
+                // アプリ個別利用制限（対象アプリのみブロック、他アプリは通常通り利用可能）
+                val currentPkg = session?.packageName
+                if (!overlayManager.isBlockerShowing && !isAlarmActive && !inCall && session != null && currentPkg != null) {
+                    if (appLimitManager.isAppBlocked(currentPkg, now)) {
+                        tracker.resetAppContinuousSession(currentPkg, now)
+                        val remainingSec = appLimitManager.getBlockRemainingSeconds(currentPkg, now)
+                        val appName = session.appName
                         android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            overlayManager.startAppLimitBlock(
+                            overlayManager.showAppExclusiveBlock(
+                                packageName = currentPkg,
                                 appName = appName,
-                                limitMinutes = limitMinutes,
-                                durationSeconds = blockSeconds
+                                remainingSeconds = remainingSec,
+                                onHomeClicked = { goToHomeScreen() }
                             )
+                        }
+                    } else {
+                        if (overlayManager.isAppExclusiveBlockShowing && overlayManager.currentBlockedPackage != currentPkg) {
+                            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                overlayManager.hideAppExclusiveBlock()
+                            }
+                        }
+
+                        val appLimit = appLimitManager.shouldTriggerAppLimitLock(
+                            packageName = currentPkg,
+                            continuousDurationMs = session.continuousDurationMs,
+                            nowMs = now,
+                            isInCall = inCall,
+                            isAlarmActive = isAlarmActive
+                        )
+                        if (appLimit != null) {
+                            appLimitManager.startAppBlock(appLimit.packageName, appLimit.blockDurationSeconds, now)
+                            tracker.resetAppContinuousSession(appLimit.packageName, now)
+                            val appName = appLimit.appName
+                            val blockSeconds = appLimit.blockDurationSeconds
+                            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                overlayManager.showAppExclusiveBlock(
+                                    packageName = appLimit.packageName,
+                                    appName = appName,
+                                    remainingSeconds = blockSeconds,
+                                    onHomeClicked = { goToHomeScreen() }
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    if (overlayManager.isAppExclusiveBlockShowing) {
+                        val currentBlocked = overlayManager.currentBlockedPackage
+                        if (currentBlocked != null && (currentPkg == null || currentPkg != currentBlocked)) {
+                            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                overlayManager.hideAppExclusiveBlock()
+                            }
                         }
                     }
                 }
@@ -370,6 +421,38 @@ class UsageMonitorService : Service() {
         }
 
         return START_STICKY
+    }
+
+    private fun goToHomeScreen() {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            try {
+                val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_HOME)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                startActivity(homeIntent)
+            } catch (_: Exception) {}
+            overlayManager.hideAppExclusiveBlock()
+        }
+    }
+
+    private fun onAppSwitchedImmediate(packageName: String, appName: String, timestampMs: Long) {
+        if (!::appLimitManager.isInitialized || !::overlayManager.isInitialized) return
+        if (appLimitManager.isAppBlocked(packageName, timestampMs)) {
+            val remainingSec = appLimitManager.getBlockRemainingSeconds(packageName, timestampMs)
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                overlayManager.showAppExclusiveBlock(
+                    packageName = packageName,
+                    appName = appName,
+                    remainingSeconds = remainingSec,
+                    onHomeClicked = { goToHomeScreen() }
+                )
+            }
+        } else if (overlayManager.isAppExclusiveBlockShowing && overlayManager.currentBlockedPackage != packageName) {
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                overlayManager.hideAppExclusiveBlock()
+            }
+        }
     }
 
     private fun checkAndTriggerMorningWakeupLock(nowMs: Long) {
@@ -657,6 +740,9 @@ class UsageMonitorService : Service() {
     }
 
     override fun onDestroy() {
+        if (activeInstance == this) {
+            activeInstance = null
+        }
         stopServiceInternal()
         super.onDestroy()
     }

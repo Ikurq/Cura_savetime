@@ -271,4 +271,66 @@ class AppLimitManagerTest {
         assertEquals(10L, ytReached?.limitMinutes)
         assertEquals(300, ytReached?.blockDurationSeconds)
     }
+
+    @Test
+    fun testStartAppBlockAndRemainingTime() {
+        val now = 1_000_000_000L
+        val pkg = "com.twitter.android"
+
+        assertFalse(appLimitManager.isAppBlocked(pkg, now))
+        assertEquals(0, appLimitManager.getBlockRemainingSeconds(pkg, now))
+
+        // 3分（180秒）ブロック開始
+        appLimitManager.startAppBlock(pkg, 180, now)
+        assertTrue(appLimitManager.isAppBlocked(pkg, now))
+        assertEquals(180, appLimitManager.getBlockRemainingSeconds(pkg, now))
+
+        // 100秒後
+        val hundredSecLater = now + 100_000L
+        assertTrue(appLimitManager.isAppBlocked(pkg, hundredSecLater))
+        assertEquals(80, appLimitManager.getBlockRemainingSeconds(pkg, hundredSecLater))
+
+        // 180秒経過
+        val endedTime = now + 180_000L
+        assertFalse(appLimitManager.isAppBlocked(pkg, endedTime))
+        assertEquals(0, appLimitManager.getBlockRemainingSeconds(pkg, endedTime))
+    }
+
+    @Test
+    fun testClearAppBlock_unblocksImmediately() {
+        val now = 1_000_000_000L
+        val pkg = "com.twitter.android"
+
+        appLimitManager.startAppBlock(pkg, 180, now)
+        assertTrue(appLimitManager.isAppBlocked(pkg, now))
+
+        appLimitManager.clearAppBlock(pkg)
+        assertFalse(appLimitManager.isAppBlocked(pkg, now))
+        assertEquals(0, appLimitManager.getBlockRemainingSeconds(pkg, now))
+    }
+
+    @Test
+    fun testEmergencyUnlock_clearsActiveBlock() {
+        val now = 1_000_000_000L
+        val pkg = "com.twitter.android"
+
+        appLimitManager.startAppBlock(pkg, 180, now)
+        assertTrue(appLimitManager.isAppBlocked(pkg, now))
+
+        appLimitManager.recordAppEmergencyUnlock(pkg, now)
+        assertFalse(appLimitManager.isAppBlocked(pkg, now))
+    }
+
+    @Test
+    fun testIndependentAppBlocking_onlyTargetAppIsBlocked() {
+        val now = 1_000_000_000L
+        val xPkg = "com.twitter.android"
+        val ytPkg = "com.google.android.youtube"
+
+        // Xだけをブロック
+        appLimitManager.startAppBlock(xPkg, 180, now)
+
+        assertTrue(appLimitManager.isAppBlocked(xPkg, now))
+        assertFalse(appLimitManager.isAppBlocked(ytPkg, now)) // YouTubeはブロックされない
+    }
 }

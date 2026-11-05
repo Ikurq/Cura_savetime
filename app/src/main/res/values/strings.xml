@@ -52,6 +52,10 @@
     <string name="app_limit_summary_format">%1$s を %2$d分 連続使用すると、画面を %3$d分間 自動ブロックします。</string>
     <string name="app_limit_action_sheet_edit">アプリ利用制限を変更する (%1$d分利用で%2$d分ブロック)</string>
     <string name="app_limit_action_sheet_new">アプリ利用制限を設定する (例: 3分でブロック)</string>
+    <string name="app_limit_exclusive_block_tag">:: CURA // APP_BLOCKED</string>
+    <string name="app_limit_exclusive_block_title">%s は利用制限中です</string>
+    <string name="app_limit_exclusive_block_message">%1$sの制限時間に達したためブロック中です。\n他の作業をするか、少し目を休めましょう。</string>
+    <string name="app_limit_btn_go_home">ホーム画面へ戻る</string>
 
     <!-- 心理的ハードルを下げるマイクロアクション文言リスト -->
     <string-array name="micro_action_button_labels">

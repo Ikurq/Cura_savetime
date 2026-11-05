@@ -78,6 +78,12 @@ class CuraOverlayManager(private val context: Context) {
 
     var onEmergencyUnlockListener: (() -> Unit)? = null
     var onBlockDismissedListener: (() -> Unit)? = null
+    var onAppEmergencyUnlockListener: ((String) -> Unit)? = null
+    private var appBlockerView: View? = null
+    var currentBlockedPackage: String? = null
+        private set
+    private var tvAppBlockerCountdown: TextView? = null
+    private var btnAppBlockerEmergency: Button? = null
 
     private val emergencyProgressRunnable = object : Runnable {
         override fun run() {
@@ -91,6 +97,25 @@ class CuraOverlayManager(private val context: Context) {
                 stopScreenBlock()
             } else {
                 btnBlockerEmergency?.text = String.format(Locale.getDefault(), "長押し中… (%d%%)", progressPercent)
+                mainHandler.postDelayed(this, 100L)
+            }
+        }
+    }
+
+    private val appBlockerEmergencyRunnable = object : Runnable {
+        override fun run() {
+            if (!isEmergencyPressing) return
+            val elapsed = System.currentTimeMillis() - emergencyPressStartTime
+            val progressPercent = ((elapsed.toFloat() / 5000f) * 100f).coerceIn(0f, 100f).toInt()
+            if (elapsed >= 5000L) {
+                isEmergencyPressing = false
+                val pkg = currentBlockedPackage
+                hideAppExclusiveBlock()
+                if (pkg != null) {
+                    onAppEmergencyUnlockListener?.invoke(pkg)
+                }
+            } else {
+                btnAppBlockerEmergency?.text = String.format(Locale.getDefault(), "長押し中… (%d%%)", progressPercent)
                 mainHandler.postDelayed(this, 100L)
             }
         }
@@ -617,6 +642,212 @@ class CuraOverlayManager(private val context: Context) {
         btnBlockerEmergency = null
         blockerRemainingSec = 0
         onBlockDismissedListener?.invoke()
+    }
+
+    val isAppExclusiveBlockShowing: Boolean
+        get() = appBlockerView != null
+
+    @SuppressLint("ClickableViewAccessibility")
+    fun showAppExclusiveBlock(
+        packageName: String,
+        appName: String,
+        remainingSeconds: Int,
+        onHomeClicked: () -> Unit
+    ) {
+        if (!canDrawOverlay()) return
+        hideBalloon()
+
+        currentBlockedPackage = packageName
+
+        if (appBlockerView != null) {
+            updateAppBlockerCountdown(remainingSeconds)
+            return
+        }
+
+        val density = context.resources.displayMetrics.density
+
+        val container = object : LinearLayout(context) {
+            override fun dispatchKeyEvent(event: KeyEvent?): Boolean {
+                if (event?.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
+                    onHomeClicked()
+                    return true
+                }
+                return true
+            }
+        }.apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#FA080C10"))
+            setPadding((28 * density).toInt(), (32 * density).toInt(), (28 * density).toInt(), (32 * density).toInt())
+            isClickable = true
+            isFocusable = true
+            isFocusableInTouchMode = true
+            setOnTouchListener { _, _ -> true }
+        }
+
+        val tagTv = TextView(context).apply {
+            text = context.getString(R.string.app_limit_exclusive_block_tag)
+            setTextColor(ContextCompat.getColor(context, R.color.accent_crimson))
+            textSize = 12f
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            gravity = Gravity.CENTER
+        }
+
+        val countdownTv = TextView(context).apply {
+            val minutes = remainingSeconds / 60
+            val seconds = remainingSeconds % 60
+            text = String.format(Locale.getDefault(), "残り %02d:%02d", minutes, seconds)
+            setTextColor(ContextCompat.getColor(context, R.color.accent_crimson))
+            textSize = 34f
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = (16 * density).toInt()
+                bottomMargin = (8 * density).toInt()
+            }
+        }
+        tvAppBlockerCountdown = countdownTv
+
+        val charImage = ImageView(context).apply {
+            setImageResource(R.drawable.cura_peeking_chibi)
+            adjustViewBounds = true
+            layoutParams = LinearLayout.LayoutParams(
+                (130 * density).toInt(),
+                (130 * density).toInt()
+            ).apply {
+                topMargin = (8 * density).toInt()
+                bottomMargin = (12 * density).toInt()
+            }
+        }
+
+        val titleTv = TextView(context).apply {
+            text = context.getString(R.string.app_limit_exclusive_block_title, appName)
+            setTextColor(ContextCompat.getColor(context, R.color.text_primary))
+            textSize = 16f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+        }
+
+        val messageTv = TextView(context).apply {
+            text = context.getString(R.string.app_limit_exclusive_block_message, appName)
+            setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
+            textSize = 13.5f
+            gravity = Gravity.CENTER
+            setLineSpacing(4f * density, 1f)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = (8 * density).toInt()
+                bottomMargin = (24 * density).toInt()
+            }
+        }
+
+        val btnHome = Button(context).apply {
+            text = context.getString(R.string.app_limit_btn_go_home)
+            setTextColor(ContextCompat.getColor(context, R.color.bg_void))
+            setBackgroundColor(ContextCompat.getColor(context, R.color.accent_cyan))
+            textSize = 13f
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding((24 * density).toInt(), (12 * density).toInt(), (24 * density).toInt(), (12 * density).toInt())
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = (12 * density).toInt()
+            }
+            setOnClickListener {
+                onHomeClicked()
+            }
+        }
+
+        val emergencyBtn = Button(context).apply {
+            text = "5秒長押しで緊急解除"
+            setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
+            setBackgroundColor(Color.parseColor("#20FFFFFF"))
+            textSize = 11f
+            typeface = Typeface.MONOSPACE
+            setPadding((16 * density).toInt(), (8 * density).toInt(), (16 * density).toInt(), (8 * density).toInt())
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            setOnTouchListener { _, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        emergencyPressStartTime = System.currentTimeMillis()
+                        isEmergencyPressing = true
+                        mainHandler.post(appBlockerEmergencyRunnable)
+                        true
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        isEmergencyPressing = false
+                        mainHandler.removeCallbacks(appBlockerEmergencyRunnable)
+                        text = "5秒長押しで緊急解除"
+                        true
+                    }
+                    else -> false
+                }
+            }
+        }
+        btnAppBlockerEmergency = emergencyBtn
+
+        container.addView(tagTv)
+        container.addView(countdownTv)
+        container.addView(charImage)
+        container.addView(titleTv)
+        container.addView(messageTv)
+        container.addView(btnHome)
+        container.addView(emergencyBtn)
+
+        val blockerParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            } else {
+                @Suppress("DEPRECATION")
+                WindowManager.LayoutParams.TYPE_PHONE
+            },
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_FULLSCREEN or
+                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.CENTER
+        }
+
+        appBlockerView = container
+
+        try {
+            windowManager.addView(container, blockerParams)
+            container.requestFocus()
+        } catch (_: Exception) {
+            appBlockerView = null
+            currentBlockedPackage = null
+        }
+    }
+
+    fun updateAppBlockerCountdown(remainingSeconds: Int) {
+        val minutes = remainingSeconds / 60
+        val seconds = remainingSeconds % 60
+        tvAppBlockerCountdown?.text = String.format(Locale.getDefault(), "残り %02d:%02d", minutes, seconds)
+    }
+
+    fun hideAppExclusiveBlock() {
+        mainHandler.removeCallbacks(appBlockerEmergencyRunnable)
+        appBlockerView?.let {
+            try {
+                windowManager.removeView(it)
+            } catch (_: Exception) {}
+        }
+        appBlockerView = null
+        currentBlockedPackage = null
+        tvAppBlockerCountdown = null
+        btnAppBlockerEmergency = null
     }
 
     fun stopThirtySecondBlock() {
