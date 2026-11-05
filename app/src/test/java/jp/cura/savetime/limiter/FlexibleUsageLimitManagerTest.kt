@@ -13,9 +13,7 @@ class FlexibleUsageLimitManagerTest {
 
     @Before
     fun setUp() {
-        limitManager = FlexibleUsageLimitManager(
-            hourlyBudgetMinutes = 30L
-        )
+        limitManager = FlexibleUsageLimitManager()
     }
 
     @Test
@@ -82,14 +80,6 @@ class FlexibleUsageLimitManagerTest {
         assertFalse(limitManager.isContinuousLimitExceeded(25L, cal))
         assertFalse(limitManager.isContinuousLimitExceeded(44L, cal))
         assertTrue(limitManager.isContinuousLimitExceeded(45L, cal))
-    }
-
-    @Test
-    fun testHourlyBudgetRemaining() {
-        assertEquals(30L, limitManager.calculateRemainingHourlyBudget(0L))
-        assertEquals(10L, limitManager.calculateRemainingHourlyBudget(20L))
-        assertEquals(0L, limitManager.calculateRemainingHourlyBudget(30L))
-        assertEquals(0L, limitManager.calculateRemainingHourlyBudget(45L))
     }
 
     @Test

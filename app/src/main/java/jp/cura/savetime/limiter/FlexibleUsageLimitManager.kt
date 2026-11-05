@@ -18,7 +18,6 @@ data class TimezoneRule(
  * 柔軟な時間制限（時間帯別・1時間あたり予算・5分刻みリマインダー）の判定ロジック
  */
 class FlexibleUsageLimitManager(
-    val hourlyBudgetMinutes: Long = 30L, // 1時間あたりの許容利用分数
     val timezoneRules: List<TimezoneRule> = defaultRules()
 ) {
     companion object {
@@ -119,12 +118,5 @@ class FlexibleUsageLimitManager(
     fun isContinuousLimitExceeded(continuousMinutes: Long, calendar: Calendar = Calendar.getInstance()): Boolean {
         val rule = getActiveRule(calendar)
         return continuousMinutes >= rule.maxContinuousMinutes
-    }
-
-    /**
-     * 1時間あたりの予算に対する残枠（分）を算出
-     */
-    fun calculateRemainingHourlyBudget(currentHourUsageMinutes: Long): Long {
-        return (hourlyBudgetMinutes - currentHourUsageMinutes).coerceAtLeast(0L)
     }
 }
