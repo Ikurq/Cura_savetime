@@ -16,11 +16,14 @@ import android.os.Process
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -52,6 +55,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var excludedAppsStore: ExcludedAppsStore
     private lateinit var ghostAppsStore: GhostAppsStore
     private lateinit var screenLockManager: ScreenLockManager
+    private lateinit var appLimitManager: jp.cura.savetime.manager.AppLimitManager
     private var currentTabIndex: Int = 0
     private var isMicroLogExpanded: Boolean = false
     private var isUpdatingSwitchUi: Boolean = false
@@ -71,6 +75,7 @@ class MainActivity : AppCompatActivity() {
         excludedAppsStore = ExcludedAppsStore(this)
         ghostAppsStore = GhostAppsStore(this)
         screenLockManager = ScreenLockManager.fromContext(this)
+        appLimitManager = jp.cura.savetime.manager.AppLimitManager.fromContext(this)
         UsageMonitorService.refreshIgnoredPackages(this)
         binding.switchAutoGameGhost.isChecked = ghostAppsStore.isAutoDetectGameCategoryEnabled()
         binding.switchIntervalLock.isChecked = screenLockManager.isIntervalLockEnabled
@@ -241,6 +246,10 @@ class MainActivity : AppCompatActivity() {
             UsageMonitorService.shouldReloadScreenLockSettings = true
         }
 
+        binding.btnAddAppLimit.setOnClickListener {
+            showAddAppLimitPickerDialog()
+        }
+
         binding.btnAddGhostApp.setOnClickListener {
             showGhostAppPickerDialog()
         }
@@ -396,9 +405,17 @@ class MainActivity : AppCompatActivity() {
             "ゲーム透過モードに設定する (半透明・タッチ透過)"
         }
 
+        val limitConfig = appLimitManager.getLimit(pkg)
+        val limitActionText = if (limitConfig != null) {
+            getString(R.string.app_limit_action_sheet_edit, limitConfig.limitMinutes, limitConfig.blockDurationSeconds / 60)
+        } else {
+            getString(R.string.app_limit_action_sheet_new)
+        }
+
         val options = arrayOf(
             ghostActionText,
             "監視除外リストに追加する",
+            limitActionText,
             "今すぐ30秒間画面をブロックして休む"
         )
 
@@ -416,7 +433,8 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                     1 -> excludePackage(pkg, appName)
-                    2 -> triggerThirtySecondBlock()
+                    2 -> showAppLimitConfigDialog(pkg, appName, limitConfig)
+                    3 -> triggerThirtySecondBlock()
                 }
             }
             .setNegativeButton("閉じる", null)
@@ -772,6 +790,7 @@ class MainActivity : AppCompatActivity() {
         renderRankingList()
         renderExclusionsList()
         renderGhostAppsList()
+        renderAppLimitsList()
     }
 
     private fun showTapSummaryInHero() {
@@ -1073,6 +1092,243 @@ class MainActivity : AppCompatActivity() {
             row.addView(removeBtn)
             binding.layoutGhostAppsList.addView(row)
         }
+    }
+
+    private fun renderAppLimitsList() {
+        binding.layoutAppLimitsList.removeAllViews()
+        val limits = appLimitManager.getAllLimits()
+
+        if (limits.isEmpty()) {
+            val emptyTv = TextView(this).apply {
+                text = getString(R.string.app_limit_empty_text)
+                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+                textSize = 11.5f
+                setPadding(0, 4, 0, 4)
+            }
+            binding.layoutAppLimitsList.addView(emptyTv)
+            return
+        }
+
+        limits.forEach { config ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                isClickable = true
+                isFocusable = true
+                setBackgroundResource(R.drawable.bg_tactical_card)
+                setPadding(16, 12, 16, 12)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = 8
+                }
+                setOnClickListener {
+                    showAppLimitConfigDialog(config.packageName, config.appName, config)
+                }
+            }
+
+            val textContainer = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+
+            val nameTv = TextView(this).apply {
+                text = config.appName
+                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+                textSize = 12.5f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+            }
+
+            val descTv = TextView(this).apply {
+                val blockMin = config.blockDurationSeconds / 60
+                val desc = if (config.blockDurationSeconds % 60 == 0 && blockMin > 0) {
+                    getString(R.string.app_limit_item_desc, config.limitMinutes, blockMin)
+                } else {
+                    getString(R.string.app_limit_item_desc_sec, config.limitMinutes, config.blockDurationSeconds)
+                }
+                text = desc
+                setTextColor(
+                    if (config.isEnabled)
+                        ContextCompat.getColor(this@MainActivity, R.color.accent_cyan)
+                    else
+                        ContextCompat.getColor(this@MainActivity, R.color.text_secondary)
+                )
+                textSize = 11f
+            }
+
+            textContainer.addView(nameTv)
+            textContainer.addView(descTv)
+
+            val toggleSwitch = com.google.android.material.materialswitch.MaterialSwitch(this).apply {
+                isChecked = config.isEnabled
+                setOnCheckedChangeListener { _, isChecked ->
+                    appLimitManager.toggleLimit(config.packageName, isChecked)
+                    UsageMonitorService.shouldReloadAppLimitSettings = true
+                    descTv.setTextColor(
+                        if (isChecked)
+                            ContextCompat.getColor(this@MainActivity, R.color.accent_cyan)
+                        else
+                            ContextCompat.getColor(this@MainActivity, R.color.text_secondary)
+                    )
+                }
+            }
+
+            val deleteBtn = Button(this).apply {
+                text = getString(R.string.app_limit_delete)
+                textSize = 9.5f
+                backgroundTintList = ContextCompat.getColorStateList(this@MainActivity, R.color.bg_surface)
+                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.accent_crimson))
+                layoutParams = LinearLayout.LayoutParams(110, 72).apply {
+                    marginStart = 8
+                }
+                setPadding(0, 0, 0, 0)
+                setOnClickListener {
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle(getString(R.string.app_limit_delete_confirm_title, config.appName))
+                        .setMessage(getString(R.string.app_limit_delete_confirm_message, config.appName))
+                        .setPositiveButton(R.string.app_limit_delete) { _, _ ->
+                            appLimitManager.removeLimit(config.packageName)
+                            UsageMonitorService.shouldReloadAppLimitSettings = true
+                            Toast.makeText(
+                                this@MainActivity,
+                                getString(R.string.app_limit_toast_deleted, config.appName),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            renderAppLimitsList()
+                        }
+                        .setNegativeButton(R.string.app_limit_cancel, null)
+                        .show()
+                }
+            }
+
+            row.addView(textContainer)
+            row.addView(toggleSwitch)
+            row.addView(deleteBtn)
+            binding.layoutAppLimitsList.addView(row)
+        }
+    }
+
+    private fun showAddAppLimitPickerDialog() {
+        Toast.makeText(this, getString(R.string.app_limit_loading_apps), Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            val allApps = withContext(Dispatchers.IO) {
+                AppNameResolver.getLaunchableApps(this@MainActivity)
+            }
+            if (allApps.isEmpty()) {
+                Toast.makeText(this@MainActivity, getString(R.string.app_limit_no_apps_found), Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+
+            val names = allApps.map { it.second }.toTypedArray()
+            AlertDialog.Builder(this@MainActivity)
+                .setTitle(getString(R.string.app_limit_select_app_title))
+                .setItems(names) { _, which ->
+                    val selected = allApps[which]
+                    val existing = appLimitManager.getLimit(selected.first)
+                    showAppLimitConfigDialog(selected.first, selected.second, existing)
+                }
+                .setNegativeButton(getString(R.string.app_limit_cancel), null)
+                .show()
+        }
+    }
+
+    private fun showAppLimitConfigDialog(
+        pkg: String,
+        appName: String,
+        existingConfig: jp.cura.savetime.model.AppLimitConfig?
+    ) {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_app_limit_config, null)
+        val tvAppName = dialogView.findViewById<TextView>(R.id.tvDialogAppName)
+        val spinnerLimit = dialogView.findViewById<Spinner>(R.id.spinnerLimitMinutes)
+        val spinnerBlock = dialogView.findViewById<Spinner>(R.id.spinnerBlockDuration)
+        val tvSummary = dialogView.findViewById<TextView>(R.id.tvConfigSummary)
+
+        tvAppName.text = appName
+
+        val limitMinutesOptions = listOf(1L, 2L, 3L, 5L, 10L, 15L, 20L, 30L, 45L, 60L)
+        val limitLabels = limitMinutesOptions.map { "${it}分" }
+
+        val blockOptions = listOf(60, 120, 180, 300, 600, 900)
+        val blockLabels = blockOptions.map { "${it / 60}分間" }
+
+        fun createDarkAdapter(items: List<String>): ArrayAdapter<String> {
+            return object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, items) {
+                override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                    val v = super.getView(position, convertView, parent) as TextView
+                    v.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+                    v.textSize = 13f
+                    return v
+                }
+
+                override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup): View {
+                    val v = super.getDropDownView(position, convertView, parent) as TextView
+                    v.setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_primary))
+                    v.setBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.bg_surface))
+                    v.setPadding(24, 20, 24, 20)
+                    v.textSize = 13f
+                    return v
+                }
+            }.apply {
+                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            }
+        }
+
+        spinnerLimit.adapter = createDarkAdapter(limitLabels)
+        spinnerBlock.adapter = createDarkAdapter(blockLabels)
+
+        val defaultLimit = existingConfig?.limitMinutes ?: 3L
+        val limitIndex = limitMinutesOptions.indexOf(defaultLimit).coerceAtLeast(0)
+        spinnerLimit.setSelection(if (limitIndex >= 0) limitIndex else 2)
+
+        val defaultBlock = existingConfig?.blockDurationSeconds ?: 180
+        val blockIndex = blockOptions.indexOf(defaultBlock).coerceAtLeast(0)
+        spinnerBlock.setSelection(if (blockIndex >= 0) blockIndex else 2)
+
+        fun updateSummary() {
+            val limitPos = spinnerLimit.selectedItemPosition.coerceIn(limitMinutesOptions.indices)
+            val blockPos = spinnerBlock.selectedItemPosition.coerceIn(blockOptions.indices)
+            val selLimit = limitMinutesOptions[limitPos]
+            val selBlock = blockOptions[blockPos]
+            tvSummary.text = getString(R.string.app_limit_summary_format, appName, selLimit, selBlock / 60)
+        }
+
+        val itemListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+                updateSummary()
+            }
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+        }
+        spinnerLimit.onItemSelectedListener = itemListener
+        spinnerBlock.onItemSelectedListener = itemListener
+        updateSummary()
+
+        AlertDialog.Builder(this)
+            .setTitle(R.string.app_limit_dialog_title)
+            .setView(dialogView)
+            .setPositiveButton(R.string.app_limit_save) { _, _ ->
+                val limitPos = spinnerLimit.selectedItemPosition.coerceIn(limitMinutesOptions.indices)
+                val blockPos = spinnerBlock.selectedItemPosition.coerceIn(blockOptions.indices)
+                val chosenLimit = limitMinutesOptions[limitPos]
+                val chosenBlock = blockOptions[blockPos]
+                val newConfig = jp.cura.savetime.model.AppLimitConfig(
+                    packageName = pkg,
+                    appName = appName,
+                    limitMinutes = chosenLimit,
+                    blockDurationSeconds = chosenBlock,
+                    isEnabled = existingConfig?.isEnabled ?: true
+                )
+                appLimitManager.setLimit(newConfig)
+                UsageMonitorService.shouldReloadAppLimitSettings = true
+                Toast.makeText(
+                    this,
+                    getString(R.string.app_limit_toast_saved, appName, chosenLimit, chosenBlock / 60),
+                    Toast.LENGTH_SHORT
+                ).show()
+                updateUiState()
+            }
+            .setNegativeButton(R.string.app_limit_cancel, null)
+            .show()
     }
 
     private fun renderRankingList() {

@@ -856,6 +856,62 @@
                         android:textSize="10sp" />
                 </LinearLayout>
 
+                <!-- App Limit Settings Card -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:background="@drawable/bg_tactical_card"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="6dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:fontFamily="monospace"
+                            android:text="@string/app_limit_section_title"
+                            android:textColor="@color/accent_cyan"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
+
+                        <Button
+                            android:id="@+id/btnAddAppLimit"
+                            android:layout_width="wrap_content"
+                            android:layout_height="28dp"
+                            android:backgroundTint="@color/accent_cyan"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:paddingHorizontal="10dp"
+                            android:paddingVertical="0dp"
+                            android:text="@string/app_limit_add_button"
+                            android:textColor="@color/bg_void"
+                            android:textSize="10sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        android:text="@string/app_limit_section_desc"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="10.5sp" />
+
+                    <LinearLayout
+                        android:id="@+id/layoutAppLimitsList"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical" />
+                </LinearLayout>
+
                 <!-- Game / Ghost Mode Card -->
                 <LinearLayout
                     android:layout_width="match_parent"

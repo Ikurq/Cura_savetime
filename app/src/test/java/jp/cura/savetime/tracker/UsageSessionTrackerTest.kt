@@ -183,4 +183,26 @@ class UsageSessionTrackerTest {
         // 1日の累計スマホ使用時間 = 300s + 180s + 120s = 600s
         assertEquals(600L, tracker.getTodayTotalPhoneUsageSeconds(now))
     }
+
+    @Test
+    fun testResetAppContinuousSession_resetsOnlyTargetAppContinuousDuration() {
+        var now = 1_000_000L
+        tracker.onAppForeground("com.twitter.android", "X", now)
+        for (i in 1..180) { // 3分使用
+            now += 1000L
+            tracker.onTick(now)
+        }
+        assertEquals(180_000L, tracker.getCurrentSession()?.continuousDurationMs)
+
+        // Xのセッション時間をリセット
+        tracker.resetAppContinuousSession("com.twitter.android", now)
+        assertEquals(0L, tracker.getCurrentSession()?.continuousDurationMs)
+
+        // その後10秒利用
+        for (i in 1..10) {
+            now += 1000L
+            tracker.onTick(now)
+        }
+        assertEquals(10_000L, tracker.getCurrentSession()?.continuousDurationMs)
+    }
 }

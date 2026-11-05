@@ -77,6 +77,7 @@ class CuraOverlayManager(private val context: Context) {
     private var isEmergencyPressing: Boolean = false
 
     var onEmergencyUnlockListener: (() -> Unit)? = null
+    var onBlockDismissedListener: (() -> Unit)? = null
 
     private val emergencyProgressRunnable = object : Runnable {
         override fun run() {
@@ -379,6 +380,25 @@ class CuraOverlayManager(private val context: Context) {
     /**
      * 深夜帯（23:00〜06:00）における自動就寝ロック（デフォルト3分間）
      */
+    /**
+     * アプリ個別制限到達による画面ブロック（デフォルト3分間）
+     */
+    fun startAppLimitBlock(
+        appName: String,
+        limitMinutes: Long,
+        durationSeconds: Int = 180
+    ) {
+        val action = jp.cura.savetime.util.RelaxActionCatalog.getRandomAction(context)
+        val tag = context.getString(R.string.app_limit_lock_tag)
+        val baseMsg = context.getString(R.string.app_limit_lock_message, appName, limitMinutes)
+        val fullMsg = "$baseMsg\n$action"
+        startScreenBlock(
+            durationSeconds = durationSeconds,
+            tagText = tag,
+            messageText = fullMsg
+        )
+    }
+
     fun startNightDefenseBlock(durationSeconds: Int = 180) {
         startScreenBlock(
             durationSeconds = durationSeconds,
@@ -596,6 +616,7 @@ class CuraOverlayManager(private val context: Context) {
         tvBlockerBreathe = null
         btnBlockerEmergency = null
         blockerRemainingSec = 0
+        onBlockDismissedListener?.invoke()
     }
 
     fun stopThirtySecondBlock() {

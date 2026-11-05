@@ -209,6 +209,17 @@ class UsageSessionTracker(
     }
 
     /**
+     * アプリ個別制限ロック発動時などに、指定したアプリの連続利用時間をリセットする
+     */
+    fun resetAppContinuousSession(packageName: String, timestampMs: Long = System.currentTimeMillis()) {
+        val session = activeSessions[packageName] ?: return
+        commitSessionToRecord(session)
+        session.continuousDurationMs = 0L
+        session.lastActiveAtMs = timestampMs
+        triggeredThresholds[packageName]?.clear()
+    }
+
+    /**
      * 特定のパッケージを除外した際に、既存のセッション・タイムラインからも削除する
      */
     fun removePackageData(packageName: String) {

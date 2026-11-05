@@ -23,7 +23,35 @@
     <string name="screen_lock_emergency_hint">※ 画面ロック中は、画面下のボタンを5秒長押しすることで緊急解除できます。</string>
     <string name="screen_lock_emergency_button">5秒長押しで緊急解除</string>
     <string name="screen_lock_emergency_progress">長押し中… (%d%%)</string>
-    <string name="screen_lock_countdown_format">残り %02d:%02d</string>
+    <string name="screen_lock_countdown_format">残り %1$02d:%2$02d</string>
+
+    <!-- アプリ別利用制限 -->
+    <string name="app_limit_section_title">:: APP_LIMITS // アプリ別利用制限</string>
+    <string name="app_limit_section_desc">アプリごとに利用上限を設定し、到達時に画面を自動ブロックします。</string>
+    <string name="app_limit_add_button">+ アプリ制限を追加</string>
+    <string name="app_limit_empty_text">制限が設定されているアプリはありません</string>
+    <string name="app_limit_item_desc">%1$d分利用で %2$d分ブロック</string>
+    <string name="app_limit_item_desc_sec">%1$d分利用で %2$d秒ブロック</string>
+    <string name="app_limit_delete">削除</string>
+    <string name="app_limit_edit">設定変更</string>
+    <string name="app_limit_dialog_title">アプリ利用制限の設定</string>
+    <string name="app_limit_select_app_title">制限するアプリを選択</string>
+    <string name="app_limit_label_limit_time">利用制限時間</string>
+    <string name="app_limit_label_block_duration">ブロック時間</string>
+    <string name="app_limit_save">保存</string>
+    <string name="app_limit_cancel">キャンセル</string>
+    <string name="app_limit_toast_saved">%1$sの制限（%2$d分利用で%3$d分ブロック）を設定しました</string>
+    <string name="app_limit_toast_deleted">%sの制限を削除しました</string>
+    <string name="app_limit_action_sheet_item">このアプリの利用制限を設定する</string>
+    <string name="app_limit_lock_tag">:: CURA // APP_LIMIT_LOCK</string>
+    <string name="app_limit_lock_message">%1$sの制限時間（%2$d分）に達しました。\n画面を伏せて少し体を休めましょう。</string>
+    <string name="app_limit_delete_confirm_title">%sの制限を削除</string>
+    <string name="app_limit_delete_confirm_message">%sの利用制限設定を削除しますか？</string>
+    <string name="app_limit_loading_apps">アプリ一覧を読み込み中…</string>
+    <string name="app_limit_no_apps_found">アプリが見つかりませんでした</string>
+    <string name="app_limit_summary_format">%1$s を %2$d分 連続使用すると、画面を %3$d分間 自動ブロックします。</string>
+    <string name="app_limit_action_sheet_edit">アプリ利用制限を変更する (%1$d分利用で%2$d分ブロック)</string>
+    <string name="app_limit_action_sheet_new">アプリ利用制限を設定する (例: 3分でブロック)</string>
 
     <!-- 心理的ハードルを下げるマイクロアクション文言リスト -->
     <string-array name="micro_action_button_labels">

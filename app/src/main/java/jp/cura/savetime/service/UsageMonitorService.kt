@@ -98,6 +98,9 @@ class UsageMonitorService : Service() {
         var shouldTriggerOneHourSleepBlock = false
 
         @Volatile
+        var shouldReloadAppLimitSettings = false
+
+        @Volatile
         var shouldReloadScreenLockSettings = false
     }
 
@@ -110,6 +113,7 @@ class UsageMonitorService : Service() {
     private lateinit var overlayManager: CuraOverlayManager
     private lateinit var ghostAppsStore: jp.cura.savetime.util.GhostAppsStore
     private lateinit var screenLockManager: ScreenLockManager
+    private lateinit var appLimitManager: jp.cura.savetime.manager.AppLimitManager
 
     @Volatile
     private var isAlarmActive = false
@@ -169,15 +173,28 @@ class UsageMonitorService : Service() {
         ghostAppsStore = jp.cura.savetime.util.GhostAppsStore(this)
         overlayManager = CuraOverlayManager(this)
         screenLockManager = ScreenLockManager.fromContext(this)
+        appLimitManager = jp.cura.savetime.manager.AppLimitManager.fromContext(this)
 
         overlayManager.onEmergencyUnlockListener = {
-            screenLockManager.recordEmergencyUnlock(System.currentTimeMillis(), this)
+            val nowMs = System.currentTimeMillis()
+            screenLockManager.recordEmergencyUnlock(nowMs, this)
+            tracker.getCurrentSession()?.let { session ->
+                appLimitManager.recordAppEmergencyUnlock(session.packageName, nowMs)
+                tracker.resetAppContinuousSession(session.packageName, nowMs)
+            }
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 android.widget.Toast.makeText(
                     this,
                     "緊急解除しました。15分間画面ロックを一時停止します",
                     android.widget.Toast.LENGTH_LONG
                 ).show()
+            }
+        }
+
+        overlayManager.onBlockDismissedListener = {
+            val nowMs = System.currentTimeMillis()
+            tracker.getCurrentSession()?.let { session ->
+                tracker.resetAppContinuousSession(session.packageName, nowMs)
             }
         }
 
@@ -255,6 +272,9 @@ class UsageMonitorService : Service() {
                 broadcastState()
 
                 val session = tracker.getCurrentSession()
+                if (overlayManager.isBlockerShowing && session != null) {
+                    tracker.resetAppContinuousSession(session.packageName, now)
+                }
                 val recentOrActive = tracker.getMostRecentOrActiveApp()
                 val targetPkg = session?.packageName ?: recentOrActive?.first
                 val targetAppName = session?.appName ?: recentOrActive?.second ?: "待機中"
@@ -270,6 +290,10 @@ class UsageMonitorService : Service() {
                     shouldReloadScreenLockSettings = false
                     screenLockManager = ScreenLockManager.fromContext(this@UsageMonitorService)
                 }
+                if (shouldReloadAppLimitSettings) {
+                    shouldReloadAppLimitSettings = false
+                    appLimitManager = jp.cura.savetime.manager.AppLimitManager.fromContext(this@UsageMonitorService)
+                }
                 if (shouldTriggerThirtySecondBlock) {
                     shouldTriggerThirtySecondBlock = false
                     mainHandlerPostBlock()
@@ -282,6 +306,30 @@ class UsageMonitorService : Service() {
                 // 自動休憩ロック & 深夜就寝自動ロックの自律判定
                 val screenContinuousMins = totalScreenMs / 60_000L
                 val inCall = isInCall()
+                // アプリ個別利用制限ロックの自律判定
+                if (!overlayManager.isBlockerShowing && !isAlarmActive && !inCall && session != null) {
+                    val appLimit = appLimitManager.shouldTriggerAppLimitLock(
+                        packageName = session.packageName,
+                        continuousDurationMs = session.continuousDurationMs,
+                        nowMs = now,
+                        isInCall = inCall,
+                        isAlarmActive = isAlarmActive
+                    )
+                    if (appLimit != null) {
+                        appLimitManager.recordAppLockTriggered(appLimit.packageName, now)
+                        tracker.resetAppContinuousSession(appLimit.packageName, now)
+                        val appName = appLimit.appName
+                        val limitMinutes = appLimit.limitMinutes
+                        val blockSeconds = appLimit.blockDurationSeconds
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            overlayManager.startAppLimitBlock(
+                                appName = appName,
+                                limitMinutes = limitMinutes,
+                                durationSeconds = blockSeconds
+                            )
+                        }
+                    }
+                }
                 if (!overlayManager.isBlockerShowing && !isAlarmActive && !inCall) {
                     if (screenLockManager.shouldTriggerNightLock(screenContinuousMins, nowMs = now, isInCall = inCall, isAlarmActive = isAlarmActive)) {
                         screenLockManager.recordLockTriggered(now, this@UsageMonitorService)
