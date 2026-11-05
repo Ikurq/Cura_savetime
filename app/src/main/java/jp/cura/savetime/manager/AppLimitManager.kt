@@ -76,6 +76,10 @@ class AppLimitManager(
         } catch (_: Exception) {}
     }
 
+    fun hasAnyActiveBlock(nowMs: Long = System.currentTimeMillis()): Boolean {
+        return blockedUntilMsMap.values.any { nowMs < it }
+    }
+
     fun isAppBlocked(packageName: String, nowMs: Long = System.currentTimeMillis()): Boolean {
         val until = blockedUntilMsMap[packageName] ?: return false
         return nowMs < until

@@ -14,6 +14,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import jp.cura.savetime.MainActivity
 import jp.cura.savetime.R
@@ -31,7 +32,7 @@ import kotlinx.coroutines.launch
 
 /**
  * フォアグラウンドアプリの連続使用時間を常駐監視するサービス
- * ユーザー補助サービス（即時検知）と UsageStatsManager（フォールバック）のハイブリッド構成
+ * ユーザー補助サービス（即時検知）と UsageStatsManager（フォールバック / PayPay等互換モード）のハイブリッド構成
  */
 class UsageMonitorService : Service() {
 
@@ -124,12 +125,27 @@ class UsageMonitorService : Service() {
     @Volatile
     private var isMorningWakeupLockPending = false
 
+    @Volatile
+    private var isScreenInteractive = true
+
+    @Volatile
+    private var lastProcessedEventTimestamp = 0L
+
+    private fun checkIsScreenInteractive(): Boolean {
+        val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
+        return pm?.isInteractive ?: isScreenInteractive
+    }
+
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val now = System.currentTimeMillis()
             when (intent?.action) {
-                Intent.ACTION_SCREEN_OFF -> tracker.onScreenOff(now)
+                Intent.ACTION_SCREEN_OFF -> {
+                    isScreenInteractive = false
+                    tracker.onScreenOff(now)
+                }
                 Intent.ACTION_SCREEN_ON -> {
+                    isScreenInteractive = true
                     tracker.onScreenOn(now)
                     resumeScreenBlockIfNeeded(now)
                 }
@@ -233,9 +249,9 @@ class UsageMonitorService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP_SERVICE) {
             if (activeInstance == this) {
-            activeInstance = null
-        }
-        stopServiceInternal()
+                activeInstance = null
+            }
+            stopServiceInternal()
             return START_NOT_STICKY
         }
 
@@ -254,6 +270,7 @@ class UsageMonitorService : Service() {
 
         monitorLoopJob = serviceScope.launch {
             val initNow = System.currentTimeMillis()
+            lastProcessedEventTimestamp = initNow
             DailyGoalManager.updateDailyGoalIfNeeded(
                 context = this@UsageMonitorService,
                 usageStatsManager = usageStatsManager,
@@ -264,71 +281,124 @@ class UsageMonitorService : Service() {
             // 初回起動時は当日00:00:00（86,400秒軸の先頭）からのイベント履歴をバックフィルしてグラフに反映
             backfillDayTimelineFromUsageStats(initNow)
 
-            // 直近15分間の履歴から現在のアクティブセッション状態も復元
-            var lastQueryTime = initNow - (15 * 60 * 1000L)
+            var lastUiTickTime = 0L
 
             while (isActive) {
                 val now = System.currentTimeMillis()
+                val screenOn = checkIsScreenInteractive()
 
-                DailyGoalManager.updateDailyGoalIfNeeded(
-                    context = this@UsageMonitorService,
-                    usageStatsManager = usageStatsManager,
-                    nowMs = now,
-                    ignoredPackages = dynamicIgnoredPackages
-                )
+                // 画面OFF時の省電力モード（2秒待機）
+                if (!screenOn) {
+                    delay(2000L)
+                    continue
+                }
 
-                // ユーザー補助サービス未接続時、または現在セッションが空の時は UsageStatsManager で補完
-                if (!AppDetectorAccessibilityService.isServiceConnected || tracker.getCurrentSession() == null) {
-                    val lookbackStart = if (tracker.getCurrentSession() == null) now - 60_000L else lastQueryTime
+                val hasAccessibility = AppDetectorAccessibilityService.isServiceConnected
+                val hasActiveBlock = appLimitManager.hasAnyActiveBlock(now)
+
+                // ユーザー補助未接続時、またはセッション空の時は UsageStatsManager で適応型クエリ
+                if (!hasAccessibility || tracker.getCurrentSession() == null) {
+                    // スライディングウィンドウ（直近3秒前〜現在）で取りこぼし防止
+                    val lookbackStart = (now - 3000L).coerceAtLeast(lastProcessedEventTimestamp.coerceAtLeast(now - 60_000L))
                     pollUsageEvents(lookbackStart, now)
                 }
-                lastQueryTime = now
 
-                val alert = tracker.onTick(now)
-                if (alert != null) {
-                    showThresholdAlertNotification(alert)
+                // UI / 通知 / 目標チェックなどの重い処理は 1Hz（1秒に1回）実行
+                if (now - lastUiTickTime >= 1000L) {
+                    lastUiTickTime = now
+
+                    DailyGoalManager.updateDailyGoalIfNeeded(
+                        context = this@UsageMonitorService,
+                        usageStatsManager = usageStatsManager,
+                        nowMs = now,
+                        ignoredPackages = dynamicIgnoredPackages
+                    )
+
+                    val alert = tracker.onTick(now)
+                    if (alert != null) {
+                        showThresholdAlertNotification(alert)
+                    }
+
+                    updateMonitorNotification()
+                    broadcastState()
+
+                    val session = tracker.getCurrentSession()
+                    if ((overlayManager.isBlockerShowing || overlayManager.isAppExclusiveBlockShowing) && session != null) {
+                        tracker.resetAppContinuousSession(session.packageName, now)
+                    }
+                    val recentOrActive = tracker.getMostRecentOrActiveApp()
+                    val targetPkg = session?.packageName ?: recentOrActive?.first
+                    val targetAppName = session?.appName ?: recentOrActive?.second ?: "待機中"
+                    val totalScreenMs = tracker.getTotalContinuousScreenDurationMs(now)
+                    val todayAppSec = tracker.getTodayAppUsageSeconds(targetPkg, now)
+                    val todayTotalPhoneSec = tracker.getTodayTotalPhoneUsageSeconds(now)
+
+                    if (shouldReloadMessageCatalog) {
+                        shouldReloadMessageCatalog = false
+                        overlayManager.reloadMessageCatalog()
+                    }
+                    if (shouldReloadScreenLockSettings) {
+                        shouldReloadScreenLockSettings = false
+                        screenLockManager = ScreenLockManager.fromContext(this@UsageMonitorService)
+                    }
+                    if (shouldReloadAppLimitSettings) {
+                        shouldReloadAppLimitSettings = false
+                        appLimitManager = jp.cura.savetime.manager.AppLimitManager.fromContext(this@UsageMonitorService)
+                    }
+                    if (shouldTriggerThirtySecondBlock) {
+                        shouldTriggerThirtySecondBlock = false
+                        mainHandlerPostBlock()
+                    }
+                    if (shouldTriggerOneHourSleepBlock) {
+                        shouldTriggerOneHourSleepBlock = false
+                        mainHandlerPostSleepBlock()
+                    }
+
+                    // 自動休憩ロック & 深夜就寝自動ロックの自律判定
+                    val screenContinuousMins = totalScreenMs / 60_000L
+                    val inCall = isInCall()
+
+                    if (!overlayManager.isBlockerShowing && !isAlarmActive && !inCall) {
+                        if (screenLockManager.shouldTriggerNightLock(screenContinuousMins, nowMs = now, isInCall = inCall, isAlarmActive = isAlarmActive)) {
+                            screenLockManager.recordLockTriggered(now, this@UsageMonitorService)
+                            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                overlayManager.startNightDefenseBlock(screenLockManager.nightDurationSeconds)
+                            }
+                        } else if (screenLockManager.shouldTriggerIntervalLock(screenContinuousMins, nowMs = now, isInCall = inCall, isAlarmActive = isAlarmActive)) {
+                            screenLockManager.recordLockTriggered(now, this@UsageMonitorService)
+                            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                overlayManager.startIntervalBreakBlock(screenLockManager.intervalDurationSeconds)
+                            }
+                        }
+                    }
+
+                    // Cura アラーム終了またはCura離脱時の保留中朝イチ起床ロックのフェイルセーフ発動
+                    if (isMorningWakeupLockPending && !isAlarmActive && targetPkg != DailyGoalManager.CURA_ALARM_PACKAGE) {
+                        triggerPendingMorningWakeupLockIfAllowed(now)
+                    }
+
+                    val isGhost = if (session != null && !session.isBufferActive) {
+                        ghostAppsStore.isGhostModeApp(session.packageName)
+                    } else {
+                        false
+                    }
+
+                    overlayManager.updateState(
+                        packageName = session?.packageName,
+                        appName = targetAppName,
+                        continuousDurationMs = session?.continuousDurationMs ?: 0L,
+                        totalScreenDurationMs = totalScreenMs,
+                        todayAppDurationSec = todayAppSec,
+                        todayTotalPhoneDurationSec = todayTotalPhoneSec,
+                        isBuffer = session?.isBufferActive ?: false,
+                        isGhostMode = isGhost
+                    )
                 }
 
-                updateMonitorNotification()
-                broadcastState()
-
+                // アプリ個別利用制限のチェック（高速周期でも判定して即応性を確保）
                 val session = tracker.getCurrentSession()
-                if ((overlayManager.isBlockerShowing || overlayManager.isAppExclusiveBlockShowing) && session != null) {
-                    tracker.resetAppContinuousSession(session.packageName, now)
-                }
-                val recentOrActive = tracker.getMostRecentOrActiveApp()
-                val targetPkg = session?.packageName ?: recentOrActive?.first
-                val targetAppName = session?.appName ?: recentOrActive?.second ?: "待機中"
-                val totalScreenMs = tracker.getTotalContinuousScreenDurationMs(now)
-                val todayAppSec = tracker.getTodayAppUsageSeconds(targetPkg, now)
-                val todayTotalPhoneSec = tracker.getTodayTotalPhoneUsageSeconds(now)
-
-                if (shouldReloadMessageCatalog) {
-                    shouldReloadMessageCatalog = false
-                    overlayManager.reloadMessageCatalog()
-                }
-                if (shouldReloadScreenLockSettings) {
-                    shouldReloadScreenLockSettings = false
-                    screenLockManager = ScreenLockManager.fromContext(this@UsageMonitorService)
-                }
-                if (shouldReloadAppLimitSettings) {
-                    shouldReloadAppLimitSettings = false
-                    appLimitManager = jp.cura.savetime.manager.AppLimitManager.fromContext(this@UsageMonitorService)
-                }
-                if (shouldTriggerThirtySecondBlock) {
-                    shouldTriggerThirtySecondBlock = false
-                    mainHandlerPostBlock()
-                }
-                if (shouldTriggerOneHourSleepBlock) {
-                    shouldTriggerOneHourSleepBlock = false
-                    mainHandlerPostSleepBlock()
-                }
-
-                // 自動休憩ロック & 深夜就寝自動ロックの自律判定
-                val screenContinuousMins = totalScreenMs / 60_000L
-                val inCall = isInCall()
-                // アプリ個別利用制限（対象アプリのみブロック、他アプリは通常通り利用可能）
                 val currentPkg = session?.packageName
+                val inCall = isInCall()
                 if (!overlayManager.isBlockerShowing && !isAlarmActive && !inCall && session != null && currentPkg != null) {
                     if (appLimitManager.isAppBlocked(currentPkg, now)) {
                         tracker.resetAppContinuousSession(currentPkg, now)
@@ -371,52 +441,28 @@ class UsageMonitorService : Service() {
                             }
                         }
                     }
-                } else {
-                    if (overlayManager.isAppExclusiveBlockShowing) {
-                        val currentBlocked = overlayManager.currentBlockedPackage
-                        if (currentBlocked != null && (currentPkg == null || currentPkg != currentBlocked)) {
-                            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                                overlayManager.hideAppExclusiveBlock()
-                            }
-                        }
-                    }
-                }
-                if (!overlayManager.isBlockerShowing && !isAlarmActive && !inCall) {
-                    if (screenLockManager.shouldTriggerNightLock(screenContinuousMins, nowMs = now, isInCall = inCall, isAlarmActive = isAlarmActive)) {
-                        screenLockManager.recordLockTriggered(now, this@UsageMonitorService)
+                } else if (overlayManager.isAppExclusiveBlockShowing) {
+                    val currentBlocked = overlayManager.currentBlockedPackage
+                    if (currentBlocked != null && (currentPkg == null || currentPkg != currentBlocked)) {
                         android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            overlayManager.startNightDefenseBlock(screenLockManager.nightDurationSeconds)
-                        }
-                    } else if (screenLockManager.shouldTriggerIntervalLock(screenContinuousMins, nowMs = now, isInCall = inCall, isAlarmActive = isAlarmActive)) {
-                        screenLockManager.recordLockTriggered(now, this@UsageMonitorService)
-                        android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            overlayManager.startIntervalBreakBlock(screenLockManager.intervalDurationSeconds)
+                            overlayManager.hideAppExclusiveBlock()
                         }
                     }
                 }
 
-                // Cura アラーム終了またはCura離脱時の保留中朝イチ起床ロックのフェイルセーフ発動
-                if (isMorningWakeupLockPending && !isAlarmActive && targetPkg != DailyGoalManager.CURA_ALARM_PACKAGE) {
-                    triggerPendingMorningWakeupLockIfAllowed(now)
-                }
-                val isGhost = if (session != null && !session.isBufferActive) {
-                    ghostAppsStore.isGhostModeApp(session.packageName)
+                // ポーリング待機インターバル：
+                // ユーザー補助有効時: 1000ms（リアルタイムプッシュ通知があるため）
+                // ユーザー補助無効時（PayPay互換モード / UsageStats高速監視）:
+                //   - ブロック中アプリあり（超警戒モード）: 150ms
+                //   - 通常時: 250ms
+                val loopDelay = if (hasAccessibility) {
+                    1000L
+                } else if (hasActiveBlock) {
+                    150L
                 } else {
-                    false
+                    250L
                 }
-
-                overlayManager.updateState(
-                    packageName = session?.packageName,
-                    appName = targetAppName,
-                    continuousDurationMs = session?.continuousDurationMs ?: 0L,
-                    totalScreenDurationMs = totalScreenMs,
-                    todayAppDurationSec = todayAppSec,
-                    todayTotalPhoneDurationSec = todayTotalPhoneSec,
-                    isBuffer = session?.isBufferActive ?: false,
-                    isGhostMode = isGhost
-                )
-
-                delay(1000L) // 1秒間隔でUI/オーバーレイ更新
+                delay(loopDelay)
             }
         }
 
@@ -593,10 +639,17 @@ class UsageMonitorService : Service() {
         val events = manager.queryEvents(startTime, endTime) ?: return
         val event = UsageEvents.Event()
 
+        var latestEventTime = lastProcessedEventTimestamp
+
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
             val pkg = event.packageName ?: continue
             val time = event.timeStamp
+
+            // 既に処理済みの過去イベントは重複実行防止のためスキップ
+            if (time <= lastProcessedEventTimestamp) {
+                continue
+            }
 
             // システムUIやキーボード、自身のアプリによる一時イベントは無視
             if (pkg == packageName ||
@@ -610,13 +663,22 @@ class UsageMonitorService : Service() {
             when (event.eventType) {
                 UsageEvents.Event.ACTIVITY_RESUMED,
                 UsageEvents.Event.MOVE_TO_FOREGROUND -> {
+                    if (time > latestEventTime) {
+                        latestEventTime = time
+                    }
                     val appName = getAppName(pkg)
                     val alert = tracker.onAppForeground(pkg, appName, time)
                     if (alert != null) {
                         showThresholdAlertNotification(alert)
                     }
+                    // ユーザー補助オフ（PayPay等互換モード）時でも即座にブロックオーバーレイ判定を発動
+                    onAppSwitchedImmediate(pkg, appName, time)
                 }
             }
+        }
+
+        if (latestEventTime > lastProcessedEventTimestamp) {
+            lastProcessedEventTimestamp = latestEventTime
         }
     }
 

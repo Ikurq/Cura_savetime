@@ -10,8 +10,8 @@
     <string name="no_active_session">アプリ待機中</string>
     <string name="no_records">計測データなし</string>
     <string name="accessibility_service_description">フォアグラウンドで開かれているアプリをリアルタイムに検知し、連続使用時間を正確に計測します。</string>
-    <string name="accessibility_required_title">:: ACCESSIBILITY_REQUIRED</string>
-    <string name="accessibility_required_desc">アプリの起動・切り替えを即座に認識するため、「ユーザー補助」をONにしてください。</string>
+    <string name="accessibility_required_title">:: ACCESSIBILITY_OPTION // 推奨</string>
+    <string name="accessibility_required_desc">ミリ秒単位の超即時検知を行う場合は「ユーザー補助」をONにしてください。\n※ PayPay等の金融アプリをご利用の場合は、OFFのままでも高精度適応モード（約0.2秒周期）で正常に動作します。</string>
     <string name="grant_accessibility">ユーザー補助を設定する</string>
 
     <!-- 画面ロック関連 -->

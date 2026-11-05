@@ -322,6 +322,19 @@ class AppLimitManagerTest {
     }
 
     @Test
+    fun testHasAnyActiveBlock_returnsTrueWhenAppIsBlocked() {
+        val now = 1_000_000_000L
+        val pkg = "com.twitter.android"
+
+        assertFalse(appLimitManager.hasAnyActiveBlock(now))
+
+        appLimitManager.startAppBlock(pkg, 180, now)
+        assertTrue(appLimitManager.hasAnyActiveBlock(now))
+        assertTrue(appLimitManager.hasAnyActiveBlock(now + 179_000L))
+        assertFalse(appLimitManager.hasAnyActiveBlock(now + 180_001L))
+    }
+
+    @Test
     fun testIndependentAppBlocking_onlyTargetAppIsBlocked() {
         val now = 1_000_000_000L
         val xPkg = "com.twitter.android"
