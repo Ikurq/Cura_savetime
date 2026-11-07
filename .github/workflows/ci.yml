@@ -93,8 +93,10 @@ jobs:
           name: "Cura:WatchYou v${{ env.APP_VERSION }}"
           body: |
             ### Fixed
-            - 個別アプリブロック画面で「ホーム画面へ戻る」ボタンを押した際や、ジェスチャー・ホームボタン・戻るボタン等でアプリを閉じた際に、ブロック画面が残留または即座に再表示されてホーム画面等の操作が妨げられる不具合を修正
-            - ホーム画面（ランチャー）や除外アプリへの切り替え時に、直前のアクティブセッションが最前面と誤認されて再ブロックされていた判定ロジックを修正
-            - 対象アプリのバックグラウンド移行（ACTIVITY_PAUSED / ACTIVITY_STOPPED）イベントを検知し、即座にブロックオーバーレイを閉じるフェイルセーフを追加
+            - 複数スレッド（高速監視コルーチン、メインスレッドUI更新、レシーバー）からの並行アクセスにより発生していた ConcurrentModificationException クラッシュを完全解消
+            - UsageSessionTracker のすべての可変コレクションを完全スレッドセーフ（排他制御）化
+            - 150ms高速ループによるブロックオーバーレイの Handler.post 連打を抑止し、UIフリーズおよび WindowManager レースコンディションを防止
+            - 常駐オーバーレイ表示（showOverlay）およびドラッグ移動時の WindowManager 例外ハンドリング漏れを修正
+            - UsageStatsManager.queryEvents の例外発生時におけるフェイルセーフ保護を追加
           fail_on_unmatched_files: true
           files: app/build/outputs/apk/debug/*.apk
