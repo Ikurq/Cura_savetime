@@ -43,6 +43,30 @@ class UsageSessionTracker(
     private val triggeredThresholds = mutableMapOf<String, MutableSet<Long>>()
     private val triggeredScreenThresholds = mutableSetOf<Long>()
 
+    /**
+     * 現在画面上にアクティブに表示・操作されているセッション
+     * ホーム画面移動中・除外アプリ滞在時・バッファ中断中（isBufferActive == true）の場合は null を返す
+     */
+    fun getCurrentForegroundSession(): AppSession? {
+        val currentPkg = currentActivePackage ?: return null
+        val session = activeSessions[currentPkg] ?: return null
+        return if (!session.isBufferActive) session else null
+    }
+
+    /**
+     * アプリがバックグラウンドに移動・一時停止した時のハンドラ
+     */
+    fun onAppPaused(packageName: String, timestampMs: Long) {
+        if (currentActivePackage == packageName) {
+            finalizeTopTimelineEntry(timestampMs)
+            val session = activeSessions[packageName]
+            if (session != null) {
+                session.isBufferActive = true
+                session.bufferStartedAtMs = timestampMs
+            }
+        }
+    }
+
     fun getCurrentSession(): AppSession? {
         val currentPkg = currentActivePackage ?: return null
         return activeSessions[currentPkg]

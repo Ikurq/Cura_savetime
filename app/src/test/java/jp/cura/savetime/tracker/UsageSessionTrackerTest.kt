@@ -205,4 +205,30 @@ class UsageSessionTrackerTest {
         }
         assertEquals(10_000L, tracker.getCurrentSession()?.continuousDurationMs)
     }
+
+    @Test
+    fun testGetCurrentForegroundSession_returnsNullWhenAppIsPausedOrOnLauncher() {
+        var now = 1_000_000L
+        tracker.onAppForeground("com.twitter.android", "X", now)
+
+        val activeSession = tracker.getCurrentForegroundSession()
+        assertNotNull(activeSession)
+        assertEquals("com.twitter.android", activeSession?.packageName)
+
+        // アプリがバックグラウンドに移動（pause）
+        now += 1000L
+        tracker.onAppPaused("com.twitter.android", now)
+
+        // フォアグラウンドセッションはnullになること
+        assertNull(tracker.getCurrentForegroundSession())
+
+        // 再度アプリが前面に来た時は復帰すること
+        now += 1000L
+        tracker.onAppForeground("com.twitter.android", "X", now)
+        assertNotNull(tracker.getCurrentForegroundSession())
+
+        // ランチャー移行時もフォアグラウンドセッションはnullであること
+        tracker.onAppForeground("com.android.launcher", "Launcher", now + 1000L)
+        assertNull(tracker.getCurrentForegroundSession())
+    }
 }

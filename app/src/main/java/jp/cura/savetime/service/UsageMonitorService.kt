@@ -395,15 +395,15 @@ class UsageMonitorService : Service() {
                     )
                 }
 
-                // アプリ個別利用制限のチェック（高速周期でも判定して即応性を確保）
-                val session = tracker.getCurrentSession()
-                val currentPkg = session?.packageName
+                // アプリ個別利用制限のチェック（現在フォアグラウンドに表示されているアプリのみが対象）
+                val fgSession = tracker.getCurrentForegroundSession()
+                val currentPkg = fgSession?.packageName
                 val inCall = isInCall()
-                if (!overlayManager.isBlockerShowing && !isAlarmActive && !inCall && session != null && currentPkg != null) {
+                if (!overlayManager.isBlockerShowing && !isAlarmActive && !inCall && fgSession != null && currentPkg != null) {
                     if (appLimitManager.isAppBlocked(currentPkg, now)) {
                         tracker.resetAppContinuousSession(currentPkg, now)
                         val remainingSec = appLimitManager.getBlockRemainingSeconds(currentPkg, now)
-                        val appName = session.appName
+                        val appName = fgSession.appName
                         android.os.Handler(android.os.Looper.getMainLooper()).post {
                             overlayManager.showAppExclusiveBlock(
                                 packageName = currentPkg,
@@ -421,7 +421,7 @@ class UsageMonitorService : Service() {
 
                         val appLimit = appLimitManager.shouldTriggerAppLimitLock(
                             packageName = currentPkg,
-                            continuousDurationMs = session.continuousDurationMs,
+                            continuousDurationMs = fgSession.continuousDurationMs,
                             nowMs = now,
                             isInCall = inCall,
                             isAlarmActive = isAlarmActive
@@ -442,6 +442,7 @@ class UsageMonitorService : Service() {
                         }
                     }
                 } else if (overlayManager.isAppExclusiveBlockShowing) {
+                    // 現在フォアグラウンドに対象アプリがいない（ホーム画面、別アプリ、画面OFFなど）場合は直ちにブロック画面を隠す
                     val currentBlocked = overlayManager.currentBlockedPackage
                     if (currentBlocked != null && (currentPkg == null || currentPkg != currentBlocked)) {
                         android.os.Handler(android.os.Looper.getMainLooper()).post {
@@ -470,6 +471,10 @@ class UsageMonitorService : Service() {
     }
 
     private fun goToHomeScreen() {
+        val currentBlocked = overlayManager.currentBlockedPackage
+        if (currentBlocked != null) {
+            tracker.onAppPaused(currentBlocked, System.currentTimeMillis())
+        }
         android.os.Handler(android.os.Looper.getMainLooper()).post {
             try {
                 val homeIntent = Intent(Intent.ACTION_MAIN).apply {
@@ -484,6 +489,15 @@ class UsageMonitorService : Service() {
 
     private fun onAppSwitchedImmediate(packageName: String, appName: String, timestampMs: Long) {
         if (!::appLimitManager.isInitialized || !::overlayManager.isInitialized) return
+        if (dynamicIgnoredPackages.contains(packageName) || packageName == this.packageName) {
+            // ホーム画面（ランチャー）や自アプリに切り替わった場合は直ちにブロック画面を隠す
+            if (overlayManager.isAppExclusiveBlockShowing) {
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    overlayManager.hideAppExclusiveBlock()
+                }
+            }
+            return
+        }
         if (appLimitManager.isAppBlocked(packageName, timestampMs)) {
             val remainingSec = appLimitManager.getBlockRemainingSeconds(packageName, timestampMs)
             android.os.Handler(android.os.Looper.getMainLooper()).post {
@@ -673,6 +687,19 @@ class UsageMonitorService : Service() {
                     }
                     // ユーザー補助オフ（PayPay等互換モード）時でも即座にブロックオーバーレイ判定を発動
                     onAppSwitchedImmediate(pkg, appName, time)
+                }
+                UsageEvents.Event.ACTIVITY_PAUSED,
+                UsageEvents.Event.ACTIVITY_STOPPED -> {
+                    if (time > latestEventTime) {
+                        latestEventTime = time
+                    }
+                    tracker.onAppPaused(pkg, time)
+                    // ブロック中だったアプリが閉じられた（PAUSED / STOPPED）場合は直ちにブロック画面を隠す
+                    if (overlayManager.isAppExclusiveBlockShowing && overlayManager.currentBlockedPackage == pkg) {
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            overlayManager.hideAppExclusiveBlock()
+                        }
+                    }
                 }
             }
         }
