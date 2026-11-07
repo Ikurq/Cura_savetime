@@ -14,13 +14,16 @@ import jp.cura.savetime.model.TimelineEntry
  * 3. 【リアルタイム・ランキング連動】: セッション確定前でも現在の1時間の累計利用状況をランキングに即座に反映。
  * 4. 【除外パッケージの動的判定】: 設定された除外アプリを即時除外・クリーンアップ。
  * 5. 【ザッピング累積】: スマホ操作中のアプリ行き来をすべて累積。
+ * 6. 【完全スレッドセーフ】: 複数スレッド（監視コルーチン、UI更新、レシーバー）からの並行アクセスによるConcurrentModificationExceptionを防止。
  */
 class UsageSessionTracker(
     val bufferDurationMs: Long = 60_000L,
     val screenRestBufferMs: Long = 60_000L, // 画面消灯で休憩とみなす時間 (60秒)
     val thresholdMinutes: List<Long> = listOf(30L, 45L, 60L),
-    var ignoredPackages: Set<String> = emptySet()
+    @Volatile var ignoredPackages: Set<String> = emptySet()
 ) {
+    private val lock = Any()
+
     // 端末全体の連続スクリーンセッション
     private var screenSessionStartedAtMs: Long = 0L
     private var isScreenOff: Boolean = false
@@ -47,41 +50,44 @@ class UsageSessionTracker(
      * 現在画面上にアクティブに表示・操作されているセッション
      * ホーム画面移動中・除外アプリ滞在時・バッファ中断中（isBufferActive == true）の場合は null を返す
      */
-    fun getCurrentForegroundSession(): AppSession? {
+    fun getCurrentForegroundSession(): AppSession? = synchronized(lock) {
         val currentPkg = currentActivePackage ?: return null
         val session = activeSessions[currentPkg] ?: return null
-        return if (!session.isBufferActive) session else null
+        return if (!session.isBufferActive) session.copy() else null
     }
 
     /**
      * アプリがバックグラウンドに移動・一時停止した時のハンドラ
      */
     fun onAppPaused(packageName: String, timestampMs: Long) {
-        if (currentActivePackage == packageName) {
-            finalizeTopTimelineEntry(timestampMs)
-            val session = activeSessions[packageName]
-            if (session != null) {
-                session.isBufferActive = true
-                session.bufferStartedAtMs = timestampMs
+        synchronized(lock) {
+            if (currentActivePackage == packageName) {
+                finalizeTopTimelineEntry(timestampMs)
+                val session = activeSessions[packageName]
+                if (session != null) {
+                    session.isBufferActive = true
+                    session.bufferStartedAtMs = timestampMs
+                }
             }
         }
     }
 
-    fun getCurrentSession(): AppSession? {
+    fun getCurrentSession(): AppSession? = synchronized(lock) {
         val currentPkg = currentActivePackage ?: return null
-        return activeSessions[currentPkg]
+        return activeSessions[currentPkg]?.copy()
     }
 
     /**
      * 現在開いているすべてのアプリセッション一覧（累計時間順）
      */
-    fun getActiveSessions(): List<AppSession> {
+    fun getActiveSessions(): List<AppSession> = synchronized(lock) {
         return activeSessions.values
             .filter { !ignoredPackages.contains(it.packageName) && it.continuousDurationMs > 0 }
+            .map { it.copy() }
             .sortedByDescending { it.continuousDurationMs }
     }
 
-    fun getTotalContinuousScreenDurationMs(now: Long = System.currentTimeMillis()): Long {
+    fun getTotalContinuousScreenDurationMs(now: Long = System.currentTimeMillis()): Long = synchronized(lock) {
         if (screenSessionStartedAtMs == 0L) return 0L
         if (isScreenOff && (now - screenOffStartedAtMs > screenRestBufferMs)) {
             return 0L
@@ -92,12 +98,12 @@ class UsageSessionTracker(
     /**
      * 現在アクティブなアプリ、または直近に開いていたアプリの (packageName, appName) を返す
      */
-    fun getMostRecentOrActiveApp(): Pair<String, String>? {
-        val current = getCurrentSession()
+    fun getMostRecentOrActiveApp(): Pair<String, String>? = synchronized(lock) {
+        val current = currentActivePackage?.let { activeSessions[it] }
         if (current != null && !ignoredPackages.contains(current.packageName)) {
             return current.packageName to current.appName
         }
-        val latestTimeline = getTimeline().firstOrNull()
+        val latestTimeline = timelineEntries.firstOrNull { !ignoredPackages.contains(it.packageName) }
         if (latestTimeline != null) {
             return latestTimeline.packageName to latestTimeline.appName
         }
@@ -107,10 +113,10 @@ class UsageSessionTracker(
     /**
      * 指定したアプリの「当日（00:00〜現在）の1日累計使用秒数」を算出する（1時間リセットを跨いで累積）
      */
-    fun getTodayAppUsageSeconds(packageName: String?, now: Long = System.currentTimeMillis()): Long {
+    fun getTodayAppUsageSeconds(packageName: String?, now: Long = System.currentTimeMillis()): Long = synchronized(lock) {
         if (packageName.isNullOrBlank() || ignoredPackages.contains(packageName)) return 0L
         val startOfDayMs = TimelineGraphCalculator.getStartOfDayMs(now)
-        val dayBars = TimelineGraphCalculator.buildDayBars(getTimeline(), startOfDayMs)
+        val dayBars = TimelineGraphCalculator.buildDayBars(getTimelineInternal(), startOfDayMs)
         val timelineAppSec = dayBars
             .filter { it.packageName == packageName }
             .sumOf { it.durationSeconds }
@@ -121,23 +127,23 @@ class UsageSessionTracker(
     /**
      * スマホ全体の「当日（00:00〜現在）の1日累計使用秒数」を算出する（全アプリの当日合計）
      */
-    fun getTodayTotalPhoneUsageSeconds(now: Long = System.currentTimeMillis()): Long {
+    fun getTodayTotalPhoneUsageSeconds(now: Long = System.currentTimeMillis()): Long = synchronized(lock) {
         val startOfDayMs = TimelineGraphCalculator.getStartOfDayMs(now)
-        val dayBars = TimelineGraphCalculator.buildDayBars(getTimeline(), startOfDayMs)
+        val dayBars = TimelineGraphCalculator.buildDayBars(getTimelineInternal(), startOfDayMs)
         val timelineTotalSec = dayBars.sumOf { it.durationSeconds }
-        val continuousScreenSec = getTotalContinuousScreenDurationMs(now) / 1000L
+        val continuousScreenSec = (if (screenSessionStartedAtMs == 0L || (isScreenOff && now - screenOffStartedAtMs > screenRestBufferMs)) 0L else (now - screenSessionStartedAtMs).coerceAtLeast(0L)) / 1000L
         return maxOf(timelineTotalSec, continuousScreenSec)
     }
 
     /**
      * 現在の1時間枠（毎正時 XX:00〜現在）におけるスマホ合計使用秒数を算出
      */
-    fun getCurrentHourPhoneUsageSeconds(now: Long = System.currentTimeMillis()): Long {
+    fun getCurrentHourPhoneUsageSeconds(now: Long = System.currentTimeMillis()): Long = synchronized(lock) {
         val startOfHourMs = (now / (3600_000L)) * 3600_000L
         val endOfHourMs = startOfHourMs + 3600_000L
 
         var timelineHourSec = 0L
-        for (entry in getTimeline()) {
+        for (entry in getTimelineInternal()) {
             val s = entry.timestampMs
             val e = s + entry.durationSeconds * 1000L
             if (e > startOfHourMs && s < endOfHourMs) {
@@ -146,20 +152,20 @@ class UsageSessionTracker(
                 timelineHourSec += ((clampedEnd - clampedStart) / 1000L).coerceAtLeast(0L)
             }
         }
-        val currentSessionSec = (getCurrentSession()?.continuousDurationMs ?: 0L) / 1000L
+        val currentSessionSec = (currentActivePackage?.let { activeSessions[it] }?.continuousDurationMs ?: 0L) / 1000L
         return maxOf(timelineHourSec, currentSessionSec)
     }
 
     /**
      * 直前の1時間枠（XX-1:00〜XX:00）におけるスマホ合計使用秒数を算出
      */
-    fun getPreviousHourPhoneUsageSeconds(now: Long = System.currentTimeMillis()): Long {
+    fun getPreviousHourPhoneUsageSeconds(now: Long = System.currentTimeMillis()): Long = synchronized(lock) {
         val currentHourStartMs = (now / (3600_000L)) * 3600_000L
         val prevHourStartMs = currentHourStartMs - 3600_000L
         val prevHourEndMs = currentHourStartMs
 
         var timelinePrevHourSec = 0L
-        for (entry in getTimeline()) {
+        for (entry in getTimelineInternal()) {
             val s = entry.timestampMs
             val e = s + entry.durationSeconds * 1000L
             if (e > prevHourStartMs && s < prevHourEndMs) {
@@ -174,7 +180,7 @@ class UsageSessionTracker(
     /**
      * 確定済みレコードと現在進行中のセッションを統合したランキングリストを取得
      */
-    fun getRecords(): List<ContinuousRecord> {
+    fun getRecords(): List<ContinuousRecord> = synchronized(lock) {
         val combined = mutableMapOf<String, ContinuousRecord>()
 
         for ((pkg, rec) in records) {
@@ -211,24 +217,33 @@ class UsageSessionTracker(
         )
     }
 
-    fun getTimeline(): List<TimelineEntry> {
-        return timelineEntries.filter { !ignoredPackages.contains(it.packageName) }
+    /**
+     * 外部に安全に公開するタイムラインのスナップショットコピー
+     */
+    fun getTimeline(): List<TimelineEntry> = synchronized(lock) {
+        return getTimelineInternal()
+    }
+
+    private fun getTimelineInternal(): List<TimelineEntry> {
+        return timelineEntries.filter { !ignoredPackages.contains(it.packageName) }.toList()
     }
 
     /**
      * UsageStatsManager等から復元した当日の過去タイムライン履歴をシードする（重複除外・降順整列）
      */
     fun seedHistoricalTimeline(historicalEntries: List<TimelineEntry>) {
-        val existingTimestamps = timelineEntries.map { it.timestampMs }.toHashSet()
-        for (entry in historicalEntries) {
-            if (!ignoredPackages.contains(entry.packageName) && !existingTimestamps.contains(entry.timestampMs)) {
-                timelineEntries.add(entry)
-                existingTimestamps.add(entry.timestampMs)
+        synchronized(lock) {
+            val existingTimestamps = timelineEntries.map { it.timestampMs }.toHashSet()
+            for (entry in historicalEntries) {
+                if (!ignoredPackages.contains(entry.packageName) && !existingTimestamps.contains(entry.timestampMs)) {
+                    timelineEntries.add(entry)
+                    existingTimestamps.add(entry.timestampMs)
+                }
             }
-        }
-        timelineEntries.sortByDescending { it.timestampMs }
-        if (timelineEntries.size > 5000) {
-            timelineEntries.subList(5000, timelineEntries.size).clear()
+            timelineEntries.sortByDescending { it.timestampMs }
+            if (timelineEntries.size > 5000) {
+                timelineEntries.subList(5000, timelineEntries.size).clear()
+            }
         }
     }
 
@@ -236,30 +251,34 @@ class UsageSessionTracker(
      * アプリ個別制限ロック発動時などに、指定したアプリの連続利用時間をリセットする
      */
     fun resetAppContinuousSession(packageName: String, timestampMs: Long = System.currentTimeMillis()) {
-        val session = activeSessions[packageName] ?: return
-        commitSessionToRecord(session)
-        session.continuousDurationMs = 0L
-        session.lastActiveAtMs = timestampMs
-        triggeredThresholds[packageName]?.clear()
+        synchronized(lock) {
+            val session = activeSessions[packageName] ?: return
+            commitSessionToRecord(session)
+            session.continuousDurationMs = 0L
+            session.lastActiveAtMs = timestampMs
+            triggeredThresholds[packageName]?.clear()
+        }
     }
 
     /**
      * 特定のパッケージを除外した際に、既存のセッション・タイムラインからも削除する
      */
     fun removePackageData(packageName: String) {
-        activeSessions.remove(packageName)
-        records.remove(packageName)
-        timelineEntries.removeAll { it.packageName == packageName }
-        if (currentActivePackage == packageName) {
-            currentActivePackage = null
-            isTimelineTopEntryOpen = false
+        synchronized(lock) {
+            activeSessions.remove(packageName)
+            records.remove(packageName)
+            timelineEntries.removeAll { it.packageName == packageName }
+            if (currentActivePackage == packageName) {
+                currentActivePackage = null
+                isTimelineTopEntryOpen = false
+            }
         }
     }
 
     /**
      * アプリがフォアグラウンドに起動または復帰した時のハンドラ
      */
-    fun onAppForeground(packageName: String, appName: String, timestampMs: Long): ThresholdAlert? {
+    fun onAppForeground(packageName: String, appName: String, timestampMs: Long): ThresholdAlert? = synchronized(lock) {
         checkHourlyReset(timestampMs)
 
         // スクリーンセッションの開始または休憩明け復旧
@@ -341,13 +360,15 @@ class UsageSessionTracker(
      * アプリがバックグラウンドに移行した時のハンドラ
      */
     fun onAppBackground(packageName: String, timestampMs: Long) {
-        val session = activeSessions[packageName]
-        if (session != null) {
-            session.isBufferActive = true
-            session.bufferStartedAtMs = timestampMs
-        }
-        if (currentActivePackage == packageName) {
-            finalizeTopTimelineEntry(timestampMs)
+        synchronized(lock) {
+            val session = activeSessions[packageName]
+            if (session != null) {
+                session.isBufferActive = true
+                session.bufferStartedAtMs = timestampMs
+            }
+            if (currentActivePackage == packageName) {
+                finalizeTopTimelineEntry(timestampMs)
+            }
         }
     }
 
@@ -355,14 +376,16 @@ class UsageSessionTracker(
      * 画面消灯時のハンドラ
      */
     fun onScreenOff(timestampMs: Long) {
-        isScreenOff = true
-        screenOffStartedAtMs = timestampMs
-        finalizeTopTimelineEntry(timestampMs)
-        val currentPkg = currentActivePackage
-        if (currentPkg != null) {
-            val session = activeSessions[currentPkg]
-            session?.isBufferActive = true
-            session?.bufferStartedAtMs = timestampMs
+        synchronized(lock) {
+            isScreenOff = true
+            screenOffStartedAtMs = timestampMs
+            finalizeTopTimelineEntry(timestampMs)
+            val currentPkg = currentActivePackage
+            if (currentPkg != null) {
+                val session = activeSessions[currentPkg]
+                session?.isBufferActive = true
+                session?.bufferStartedAtMs = timestampMs
+            }
         }
     }
 
@@ -370,22 +393,24 @@ class UsageSessionTracker(
      * 画面点灯時のハンドラ
      */
     fun onScreenOn(timestampMs: Long) {
-        checkHourlyReset(timestampMs)
-        if (isScreenOff && (timestampMs - screenOffStartedAtMs <= screenRestBufferMs)) {
-            isScreenOff = false
-        } else if (isScreenOff) {
-            resetAllSessions(timestampMs)
-            screenSessionStartedAtMs = timestampMs
-            isScreenOff = false
-            triggeredScreenThresholds.clear()
+        synchronized(lock) {
+            checkHourlyReset(timestampMs)
+            if (isScreenOff && (timestampMs - screenOffStartedAtMs <= screenRestBufferMs)) {
+                isScreenOff = false
+            } else if (isScreenOff) {
+                resetAllSessions(timestampMs)
+                screenSessionStartedAtMs = timestampMs
+                isScreenOff = false
+                triggeredScreenThresholds.clear()
+            }
+            onTick(timestampMs)
         }
-        onTick(timestampMs)
     }
 
     /**
      * 定周期ポーリングでの時間進行としきい値チェック
      */
-    fun onTick(timestampMs: Long): ThresholdAlert? {
+    fun onTick(timestampMs: Long): ThresholdAlert? = synchronized(lock) {
         checkHourlyReset(timestampMs)
 
         if (isScreenOff) {
@@ -468,7 +493,7 @@ class UsageSessionTracker(
             }
         }
 
-        val screenDurationMinutes = getTotalContinuousScreenDurationMs(timestampMs) / (60 * 1000L)
+        val screenDurationMinutes = (if (screenSessionStartedAtMs == 0L || (isScreenOff && timestampMs - screenOffStartedAtMs > screenRestBufferMs)) 0L else (timestampMs - screenSessionStartedAtMs).coerceAtLeast(0L)) / (60 * 1000L)
         for (threshold in thresholdMinutes.sorted()) {
             if (screenDurationMinutes >= threshold && !triggeredScreenThresholds.contains(threshold)) {
                 triggeredScreenThresholds.add(threshold)

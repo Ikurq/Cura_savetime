@@ -240,7 +240,11 @@ class CuraOverlayManager(private val context: Context) {
         params = layoutParams
 
         setupTouchHandling(view, layoutParams)
-        windowManager.addView(view, layoutParams)
+        try {
+            windowManager.addView(view, layoutParams)
+        } catch (_: Exception) {
+            overlayView = null
+        }
     }
 
     /**
@@ -326,7 +330,9 @@ class CuraOverlayManager(private val context: Context) {
                     } else {
                         val moveDeltaY = (event.rawY - dragOriginTouchY).toInt()
                         layoutParams.y = dragOriginWindowY + moveDeltaY
-                        windowManager.updateViewLayout(rootView, layoutParams)
+                        try {
+                            windowManager.updateViewLayout(rootView, layoutParams)
+                        } catch (_: Exception) {}
                     }
                     true
                 }

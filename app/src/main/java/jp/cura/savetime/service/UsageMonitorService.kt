@@ -282,6 +282,7 @@ class UsageMonitorService : Service() {
             backfillDayTimelineFromUsageStats(initNow)
 
             var lastUiTickTime = 0L
+            var lastAppBlockCountdownUpdateSec = -1
 
             while (isActive) {
                 val now = System.currentTimeMillis()
@@ -404,16 +405,26 @@ class UsageMonitorService : Service() {
                         tracker.resetAppContinuousSession(currentPkg, now)
                         val remainingSec = appLimitManager.getBlockRemainingSeconds(currentPkg, now)
                         val appName = fgSession.appName
-                        android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            overlayManager.showAppExclusiveBlock(
-                                packageName = currentPkg,
-                                appName = appName,
-                                remainingSeconds = remainingSec,
-                                onHomeClicked = { goToHomeScreen() }
-                            )
+                        val isShowingForThisApp = overlayManager.isAppExclusiveBlockShowing && overlayManager.currentBlockedPackage == currentPkg
+                        if (!isShowingForThisApp) {
+                            lastAppBlockCountdownUpdateSec = remainingSec
+                            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                overlayManager.showAppExclusiveBlock(
+                                    packageName = currentPkg,
+                                    appName = appName,
+                                    remainingSeconds = remainingSec,
+                                    onHomeClicked = { goToHomeScreen() }
+                                )
+                            }
+                        } else if (remainingSec != lastAppBlockCountdownUpdateSec) {
+                            lastAppBlockCountdownUpdateSec = remainingSec
+                            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                overlayManager.updateAppBlockerCountdown(remainingSec)
+                            }
                         }
                     } else {
                         if (overlayManager.isAppExclusiveBlockShowing && overlayManager.currentBlockedPackage != currentPkg) {
+                            lastAppBlockCountdownUpdateSec = -1
                             android.os.Handler(android.os.Looper.getMainLooper()).post {
                                 overlayManager.hideAppExclusiveBlock()
                             }
@@ -431,6 +442,7 @@ class UsageMonitorService : Service() {
                             tracker.resetAppContinuousSession(appLimit.packageName, now)
                             val appName = appLimit.appName
                             val blockSeconds = appLimit.blockDurationSeconds
+                            lastAppBlockCountdownUpdateSec = blockSeconds
                             android.os.Handler(android.os.Looper.getMainLooper()).post {
                                 overlayManager.showAppExclusiveBlock(
                                     packageName = appLimit.packageName,
@@ -445,6 +457,7 @@ class UsageMonitorService : Service() {
                     // 現在フォアグラウンドに対象アプリがいない（ホーム画面、別アプリ、画面OFFなど）場合は直ちにブロック画面を隠す
                     val currentBlocked = overlayManager.currentBlockedPackage
                     if (currentBlocked != null && (currentPkg == null || currentPkg != currentBlocked)) {
+                        lastAppBlockCountdownUpdateSec = -1
                         android.os.Handler(android.os.Looper.getMainLooper()).post {
                             overlayManager.hideAppExclusiveBlock()
                         }
@@ -585,7 +598,11 @@ class UsageMonitorService : Service() {
     private fun backfillDayTimelineFromUsageStats(nowMs: Long) {
         val manager = usageStatsManager ?: return
         val startOfDayMs = jp.cura.savetime.tracker.TimelineGraphCalculator.getStartOfDayMs(nowMs)
-        val events = manager.queryEvents(startOfDayMs, nowMs) ?: return
+        val events = try {
+            manager.queryEvents(startOfDayMs, nowMs)
+        } catch (_: Exception) {
+            null
+        } ?: return
         val event = UsageEvents.Event()
 
         val historical = mutableListOf<jp.cura.savetime.model.TimelineEntry>()
@@ -650,7 +667,11 @@ class UsageMonitorService : Service() {
     @Suppress("DEPRECATION")
     private fun pollUsageEvents(startTime: Long, endTime: Long) {
         val manager = usageStatsManager ?: return
-        val events = manager.queryEvents(startTime, endTime) ?: return
+        val events = try {
+            manager.queryEvents(startTime, endTime)
+        } catch (_: Exception) {
+            null
+        } ?: return
         val event = UsageEvents.Event()
 
         var latestEventTime = lastProcessedEventTimestamp
